@@ -1,0 +1,25 @@
+services:
+  supremacy:
+    build:
+      context: .
+      args:
+        - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+        - JWT_SECRET=${JWT_SECRET:-supremacy-bjj-change-me}
+    ports:
+      - "3000:3000"
+    volumes:
+      - supremacy-data:/app/data
+    environment:
+      - NODE_ENV=production
+      - DB_PATH=/app/data/supremacy.db
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - JWT_SECRET=${JWT_SECRET:-supremacy-bjj-change-me}
+      - ZIVVY_EMAIL=${ZIVVY_EMAIL}
+      - ZIVVY_PASSWORD=${ZIVVY_PASSWORD}
+      - ZIVVY_SCHOOL_ID=${ZIVVY_SCHOOL_ID}
+      - MM_TYPESENSE_API_KEY=${MM_TYPESENSE_API_KEY}
+      - MM_CRM_TOKEN=${MM_CRM_TOKEN}
+    restart: unless-stopped
+
+volumes:
+  supremacy-data:
