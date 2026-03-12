@@ -6,6 +6,7 @@ import Link from "next/link";
 import DashboardChat from "@/components/DashboardChat";
 import ActionCenter from "@/components/ActionCenter";
 import InfoTip from "@/components/InfoTip";
+import PinnedItems from "@/components/PinnedItems";
 
 interface DashboardData {
   stats: {
@@ -640,6 +641,11 @@ export default function Dashboard() {
           <p className="text-sm text-muted mt-1">Supremacy BJJ — Largo, FL</p>
         </div>
         <SyncButton />
+      </div>
+
+      {/* Pinned items from Quick chat */}
+      <div className="mb-6">
+        <PinnedItems />
       </div>
 
       {/* Top Stats — compact row */}
