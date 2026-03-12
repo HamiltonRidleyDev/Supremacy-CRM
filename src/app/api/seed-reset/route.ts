@@ -68,14 +68,13 @@ export async function POST(request: Request) {
     insertUser.run("kyle@supremacyjj.com", "727-555-0002", managerHash, "manager", null, "Kyle", 1);
     insertUser.run("dan@supremacyjj.com", null, adminHash, "admin", null, "Dan Kemp", 1);
 
-    console.log("=== SEED RESET PASSWORDS (change immediately) ===");
-    console.log(`  Rodrigo/Dan: ${adminPassword}`);
-    console.log(`  Kyle: ${managerPassword}`);
-    console.log("=================================================");
-
     return NextResponse.json({
       success: true,
-      message: "Data reset complete. Check server logs for temporary passwords.",
+      message: "Data reset complete. Change these passwords immediately.",
+      credentials: {
+        admin: { accounts: ["rodrigo@supremacyjj.com", "dan@supremacyjj.com"], tempPassword: adminPassword },
+        manager: { accounts: ["kyle@supremacyjj.com"], tempPassword: managerPassword },
+      },
     });
   } catch (error) {
     console.error("API Error [POST /api/seed-reset]:", error);

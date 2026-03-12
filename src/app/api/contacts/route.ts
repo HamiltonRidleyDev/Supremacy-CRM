@@ -7,13 +7,16 @@ export const GET = apiHandler((request) => {
   ensureContactSchema();
   const { searchParams } = new URL(request.url);
 
+  const rawLimit = Number(searchParams.get("limit")) || 50;
+  const order = searchParams.get("order");
+
   return getContactList({
     page: Number(searchParams.get("page")) || 1,
-    limit: Number(searchParams.get("limit")) || 50,
+    limit: Math.min(Math.max(rawLimit, 1), 200),
     type: searchParams.get("type") || undefined,
     risk: searchParams.get("risk") || undefined,
     search: searchParams.get("search") || undefined,
     sort: searchParams.get("sort") || undefined,
-    order: (searchParams.get("order") as "asc" | "desc") || undefined,
+    order: order === "asc" || order === "desc" ? order : undefined,
   });
 }, { minRole: "manager" });

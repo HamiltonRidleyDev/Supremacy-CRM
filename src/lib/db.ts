@@ -440,6 +440,12 @@ export function initDb() {
     CREATE INDEX IF NOT EXISTS idx_survey_responses_send ON survey_responses(send_id);
     CREATE INDEX IF NOT EXISTS idx_student_profiles_student ON student_profiles(student_id);
     CREATE INDEX IF NOT EXISTS idx_student_profiles_lead ON student_profiles(lead_id);
+    -- Key-value store for app-level settings and locks
+    CREATE TABLE IF NOT EXISTS app_settings (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL,
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
   `);
 
   // Migrate existing chat_sessions table to add new columns

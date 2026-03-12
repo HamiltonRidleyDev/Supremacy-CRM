@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
+import DOMPurify from "isomorphic-dompurify";
 import { useVoiceInput } from "@/hooks/useVoiceInput";
 
 // ── Types ──────────────────────────────────────────────
@@ -26,14 +27,7 @@ const PIN_TRIGGERS = /^(save that|pin that|keep that)\.?$/i;
 
 // ── Markdown renderer (safe) ───────────────────────────
 
-function sanitizeHtml(html: string): string {
-  return html
-    .replace(/<script[\s\S]*?<\/script>/gi, "")
-    .replace(/<style[\s\S]*?<\/style>/gi, "")
-    .replace(/on\w+="[^"]*"/gi, "")
-    .replace(/on\w+='[^']*'/gi, "")
-    .replace(/<(?!\/?(?:strong|em|b|i|br|p|ul|ol|li|span)\b)[^>]*>/gi, "");
-}
+const PURIFY_CONFIG = { ALLOWED_TAGS: ["strong", "em", "b", "i"] };
 
 function renderMarkdown(text: string) {
   return text.split("\n").map((line, i) => {
@@ -41,7 +35,7 @@ function renderMarkdown(text: string) {
       .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
       .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
       .replace(/\*(.+?)\*/g, "<em>$1</em>");
-    formatted = sanitizeHtml(formatted);
+    formatted = DOMPurify.sanitize(formatted, PURIFY_CONFIG);
     if (line.startsWith("- ") || line.startsWith("* ")) {
       return <li key={i} className="ml-4 list-disc" dangerouslySetInnerHTML={{ __html: formatted.slice(2) }} />;
     }

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { initDb } from "@/lib/db";
 import {
   getSurveySendByToken,
@@ -7,12 +8,23 @@ import {
   upsertSurveyResponse,
   upsertStudentProfile,
 } from "@/lib/queries";
+import { checkRateLimit } from "@/lib/rate-limiter";
 
 export async function GET(
-  _request: Request,
+  _request: NextRequest,
   { params }: { params: Promise<{ token: string }> }
 ) {
   try {
+    // Rate limit: 10 survey lookups per hour per IP
+    const ip = _request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
+    const rl = checkRateLimit(ip, "survey_lookup", 10, 3600);
+    if (!rl.allowed) {
+      return NextResponse.json(
+        { error: "Too many requests. Please try again later.", retryAfter: rl.retryAfter },
+        { status: 429 }
+      );
+    }
+
     initDb();
     const { token } = await params;
 
@@ -50,10 +62,20 @@ export async function GET(
 }
 
 export async function POST(
-  request: Request,
+  request: NextRequest,
   { params }: { params: Promise<{ token: string }> }
 ) {
   try {
+    // Rate limit: 10 survey submissions per hour per IP
+    const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
+    const rl = checkRateLimit(ip, "survey_submit", 10, 3600);
+    if (!rl.allowed) {
+      return NextResponse.json(
+        { error: "Too many requests. Please try again later.", retryAfter: rl.retryAfter },
+        { status: 429 }
+      );
+    }
+
     initDb();
     const { token } = await params;
 
@@ -78,17 +100,21 @@ export async function POST(
       return NextResponse.json({ error: "answers object is required" }, { status: 400 });
     }
 
-    // Save each answer
+    // Validate answer keys against template questions
+    const questions = JSON.parse(send.template_questions) as Array<{
+      key: string; profile_field?: string;
+    }>;
+    const validKeys = new Set(questions.map((q) => q.key));
+
+    // Save each answer (only valid keys, max 2000 chars per answer)
     for (const [key, value] of Object.entries(answers)) {
+      if (!validKeys.has(key)) continue; // skip unknown keys
       if (value !== undefined && value !== null && String(value).trim() !== "") {
-        upsertSurveyResponse(send.id, key, String(value));
+        upsertSurveyResponse(send.id, key, String(value).slice(0, 2000));
       }
     }
 
     // Map answers to student profile fields
-    const questions = JSON.parse(send.template_questions) as Array<{
-      key: string; profile_field?: string;
-    }>;
     const profileFields: Record<string, string | number | null> = {};
 
     for (const q of questions) {

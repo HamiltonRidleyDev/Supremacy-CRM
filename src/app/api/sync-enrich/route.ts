@@ -80,6 +80,26 @@ export async function POST(request: Request) {
     ensureZivvySchema();
     ensureContactSchema();
     const db = getDb();
+
+    // Prevent concurrent enrichment runs
+    const lock = db.prepare(
+      "SELECT value FROM app_settings WHERE key = 'enrich_lock'"
+    ).get() as { value: string } | undefined;
+    if (lock) {
+      const lockTime = parseInt(lock.value, 10);
+      // Lock expires after 30 minutes
+      if (Date.now() - lockTime < 30 * 60 * 1000) {
+        return NextResponse.json(
+          { error: "Enrichment sync is already in progress" },
+          { status: 409 }
+        );
+      }
+    }
+    // Set lock
+    db.prepare(
+      "INSERT OR REPLACE INTO app_settings (key, value) VALUES ('enrich_lock', ?)"
+    ).run(String(Date.now()));
+
     const body = await request.json().catch(() => ({ scope: "all" }));
     const scope = body.scope || "all";
     const results: Record<string, any> = {};
@@ -243,8 +263,16 @@ export async function POST(request: Request) {
       console.log(`[enrich] Scored ${scoreResult.contacts_scored} contacts`);
     }
 
+    // Release lock
+    db.prepare("DELETE FROM app_settings WHERE key = 'enrich_lock'").run();
+
     return NextResponse.json({ success: true, scope, ...results });
   } catch (error) {
+    // Release lock on error
+    try {
+      const db = getDb();
+      db.prepare("DELETE FROM app_settings WHERE key = 'enrich_lock'").run();
+    } catch { /* ignore cleanup errors */ }
     console.error("API Error [POST /api/sync-enrich]:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }

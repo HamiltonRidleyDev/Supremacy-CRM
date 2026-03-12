@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef, useCallback } from "react";
+import DOMPurify from "isomorphic-dompurify";
 import { useVoiceInput } from "@/hooks/useVoiceInput";
 
 interface Note {
@@ -197,6 +198,8 @@ export default function PlannerPage() {
     ? insights.filter((i) => i.category === selectedCategory)
     : insights;
 
+  const PURIFY_CONFIG = { ALLOWED_TAGS: ["strong", "em", "b", "i"] };
+
   function renderContent(text: string) {
     const parts = text.split(/(```[\s\S]*?```)/g);
     return parts.map((part, i) => {
@@ -222,11 +225,11 @@ export default function PlannerPage() {
         <div key={i}>
           {lines.map((line, j) => {
             if (!line.trim()) return <div key={j} className="h-2" />;
-            // Escape HTML first, then apply safe formatting
             let rendered = line
               .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
               .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
               .replace(/\*(.+?)\*/g, '<em>$1</em>');
+            rendered = DOMPurify.sanitize(rendered, PURIFY_CONFIG);
             if (line.trim().startsWith("- ")) {
               return (
                 <div key={j} className="flex gap-2 ml-2 my-0.5">
