@@ -10,6 +10,7 @@
  */
 
 import { getDb } from "../db";
+import crypto from "crypto";
 
 const CODE_EXPIRY_MINUTES = 10;
 
@@ -19,7 +20,7 @@ const CODE_EXPIRY_MINUTES = 10;
  */
 export function generateMagicCode(userId: number): string {
   const db = getDb();
-  const code = String(Math.floor(100000 + Math.random() * 900000)); // 6 digits
+  const code = String(crypto.randomInt(100000, 999999)); // 6 digits, cryptographically secure
   const expiresAt = new Date(Date.now() + CODE_EXPIRY_MINUTES * 60 * 1000).toISOString();
 
   // Clear any existing codes for this user

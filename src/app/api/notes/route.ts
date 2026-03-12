@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { apiHandler } from "@/lib/api-handler";
 import { getNotes, createNote, deleteNote } from "@/lib/queries";
 
-export const GET = apiHandler(() => getNotes());
+export const GET = apiHandler(() => getNotes(), { minRole: "manager" });
 
 export const POST = apiHandler(async (request) => {
   const body = await request.json();
@@ -14,7 +14,7 @@ export const POST = apiHandler(async (request) => {
 
   const result = createNote("Rodrigo", content.trim(), tags);
   return NextResponse.json({ id: result.lastInsertRowid });
-});
+}, { minRole: "manager" });
 
 export const DELETE = apiHandler((request) => {
   const { searchParams } = new URL(request.url);
@@ -26,4 +26,4 @@ export const DELETE = apiHandler((request) => {
 
   deleteNote(id);
   return NextResponse.json({ success: true });
-});
+}, { minRole: "manager" });

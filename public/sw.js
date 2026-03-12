@@ -1,5 +1,5 @@
 // Supremacy BJJ Service Worker
-const CACHE_NAME = "supremacy-v1";
+const CACHE_NAME = "supremacy-v2";
 
 // Install — cache the app shell
 self.addEventListener("install", (event) => {
@@ -28,8 +28,12 @@ self.addEventListener("fetch", (event) => {
   event.respondWith(
     fetch(event.request)
       .then((response) => {
-        // Cache successful responses
-        if (response.status === 200) {
+        // Only cache same-origin successful responses
+        if (
+          response.status === 200 &&
+          response.type === "basic" &&
+          event.request.url.startsWith(self.location.origin)
+        ) {
           const clone = response.clone();
           caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
         }

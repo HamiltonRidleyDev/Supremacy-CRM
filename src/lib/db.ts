@@ -420,6 +420,18 @@ export function initDb() {
     CREATE INDEX IF NOT EXISTS idx_content_revisions_piece ON content_revisions(content_piece_id, version);
     CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);
     CREATE INDEX IF NOT EXISTS idx_users_student ON users(student_id);
+    -- Pinned items from Quick chat (voice "save that" or tap pin)
+    CREATE TABLE IF NOT EXISTS pinned_items (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      session_id INTEGER NOT NULL REFERENCES chat_sessions(id),
+      user_message TEXT NOT NULL,
+      assistant_message TEXT NOT NULL,
+      context_summary TEXT,
+      pinned_by TEXT NOT NULL DEFAULT 'Rodrigo',
+      status TEXT NOT NULL DEFAULT 'active', -- active, dismissed, done
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_pinned_items_status ON pinned_items(status, created_at);
     CREATE INDEX IF NOT EXISTS idx_chat_sessions_source ON chat_sessions(source);
     CREATE INDEX IF NOT EXISTS idx_survey_sends_token ON survey_sends(token);
     CREATE INDEX IF NOT EXISTS idx_survey_sends_template ON survey_sends(template_id, status);

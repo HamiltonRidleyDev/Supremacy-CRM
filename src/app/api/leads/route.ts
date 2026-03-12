@@ -5,4 +5,4 @@ export const GET = apiHandler(() => {
   const leads = getLeads();
   const funnel = getLeadConversionFunnel();
   return { leads, funnel };
-});
+}, { minRole: "manager" });

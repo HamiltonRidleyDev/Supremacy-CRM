@@ -118,7 +118,8 @@ export async function GET() {
     result.announcements = announcements;
 
     return NextResponse.json(result);
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch (error) {
+    console.error("API Error [GET /api/me/dashboard]:", error);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

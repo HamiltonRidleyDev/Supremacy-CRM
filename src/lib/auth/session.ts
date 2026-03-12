@@ -10,9 +10,20 @@
 import { SignJWT, jwtVerify, type JWTPayload } from "jose";
 import { cookies } from "next/headers";
 
-const JWT_SECRET = new TextEncoder().encode(
-  process.env.JWT_SECRET || "supremacy-bjj-dev-secret-change-in-production"
-);
+let _jwtSecret: Uint8Array | null = null;
+
+function getJwtSecret(): Uint8Array {
+  if (!_jwtSecret) {
+    const secret = process.env.JWT_SECRET;
+    if (!secret) {
+      throw new Error(
+        "JWT_SECRET environment variable is required. Generate one with: openssl rand -hex 32"
+      );
+    }
+    _jwtSecret = new TextEncoder().encode(secret);
+  }
+  return _jwtSecret;
+}
 
 const COOKIE_NAME = "session";
 const SESSION_DURATION = 60 * 60 * 24 * 30; // 30 days
@@ -35,7 +46,7 @@ export async function createSession(payload: Omit<SessionPayload, "iat" | "exp">
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
     .setExpirationTime(`${SESSION_DURATION}s`)
-    .sign(JWT_SECRET);
+    .sign(getJwtSecret());
 }
 
 /**
@@ -43,7 +54,7 @@ export async function createSession(payload: Omit<SessionPayload, "iat" | "exp">
  */
 export async function verifySession(token: string): Promise<SessionPayload | null> {
   try {
-    const { payload } = await jwtVerify(token, JWT_SECRET);
+    const { payload } = await jwtVerify(token, getJwtSecret());
     return payload as unknown as SessionPayload;
   } catch {
     return null;
@@ -58,7 +69,7 @@ export async function setSessionCookie(token: string) {
   cookieStore.set(COOKIE_NAME, token, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
+    sameSite: "strict",
     maxAge: SESSION_DURATION,
     path: "/",
   });

@@ -1,17 +1,17 @@
 import { NextResponse } from "next/server";
 import { getDb, ensureZivvySchema, ensureMMSchema } from "@/lib/db";
+import { getSession } from "@/lib/auth/session";
+import { hasRole } from "@/lib/auth/session";
 
 /**
  * GET /api/dedup — Detect duplicate and unlinked contacts across Zivvy and Market Muscles.
- *
- * Finds:
- * 1. Students that also appear as leads (converted but not cleaned up)
- * 2. Leads with duplicate emails (same person, multiple records)
- * 3. Students/leads missing cross-system links (has zivvy_id but no mm_id or vice versa)
- * 4. Linking coverage stats
  */
 export async function GET() {
   try {
+    const session = await getSession();
+    if (!session || !hasRole(session.role, "admin")) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
     ensureZivvySchema();
     ensureMMSchema();
     const db = getDb();
@@ -159,7 +159,7 @@ export async function GET() {
     });
   } catch (err) {
     return NextResponse.json(
-      { error: err instanceof Error ? err.message : "Unknown error" },
+      { error: "Internal server error" },
       { status: 500 }
     );
   }
@@ -178,6 +178,11 @@ export async function GET() {
  */
 export async function POST(request: Request) {
   try {
+    const session = await getSession();
+    if (!session || !hasRole(session.role, "admin")) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
     ensureZivvySchema();
     ensureMMSchema();
     const db = getDb();
@@ -367,7 +372,7 @@ export async function POST(request: Request) {
 
   } catch (err) {
     return NextResponse.json(
-      { error: err instanceof Error ? err.message : "Unknown error" },
+      { error: "Internal server error" },
       { status: 500 }
     );
   }

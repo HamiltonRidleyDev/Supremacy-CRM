@@ -1,9 +1,26 @@
 import { NextResponse } from "next/server";
 import { initDb } from "@/lib/db";
+import { getSession } from "@/lib/auth/session";
 import bcrypt from "bcryptjs";
+import crypto from "crypto";
 
-export async function POST() {
+export async function POST(request: Request) {
   try {
+    // ADMIN ONLY — this is a destructive operation
+    const session = await getSession();
+    if (!session || session.role !== "admin") {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
+    // Require explicit confirmation
+    const body = await request.json().catch(() => ({}));
+    if (body.confirm !== "RESET_ALL_DATA") {
+      return NextResponse.json(
+        { error: "Confirmation required. Send { confirm: 'RESET_ALL_DATA' } to proceed." },
+        { status: 400 }
+      );
+    }
+
     const db = initDb();
 
     // Temporarily disable FK checks so we can delete in any order
@@ -34,13 +51,15 @@ export async function POST() {
 
     db.pragma("foreign_keys = ON");
 
-    // Reset users to just Rodrigo + Kyle + Dan (no fake student-linked users)
+    // Reset users to just Rodrigo + Kyle + Dan with random passwords
     db.exec(`DELETE FROM magic_codes`);
     db.exec(`DELETE FROM users`);
 
-    // Hash default passwords for staff accounts
-    const adminHash = bcrypt.hashSync("supremacy2026", 10);
-    const managerHash = bcrypt.hashSync("supremacy2026", 10);
+    // Generate random passwords for staff accounts
+    const adminPassword = crypto.randomBytes(16).toString("hex");
+    const managerPassword = crypto.randomBytes(16).toString("hex");
+    const adminHash = bcrypt.hashSync(adminPassword, 10);
+    const managerHash = bcrypt.hashSync(managerPassword, 10);
 
     const insertUser = db.prepare(
       `INSERT INTO users (email, phone, password_hash, role, student_id, display_name, is_active) VALUES (?, ?, ?, ?, ?, ?, ?)`
@@ -49,13 +68,17 @@ export async function POST() {
     insertUser.run("kyle@supremacyjj.com", "727-555-0002", managerHash, "manager", null, "Kyle", 1);
     insertUser.run("dan@supremacyjj.com", null, adminHash, "admin", null, "Dan Kemp", 1);
 
+    console.log("=== SEED RESET PASSWORDS (change immediately) ===");
+    console.log(`  Rodrigo/Dan: ${adminPassword}`);
+    console.log(`  Kyle: ${managerPassword}`);
+    console.log("=================================================");
+
     return NextResponse.json({
       success: true,
-      message: "Demo data cleared. Kept: class types, schedule, techniques, channels, survey templates. Users reset to Rodrigo + Kyle + Dan with default password.",
+      message: "Data reset complete. Check server logs for temporary passwords.",
     });
   } catch (error) {
     console.error("API Error [POST /api/seed-reset]:", error);
-    const message = error instanceof Error ? error.message : "Internal server error";
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

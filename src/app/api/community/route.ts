@@ -5,4 +5,4 @@ export const GET = apiHandler((request) => {
   const { searchParams } = new URL(request.url);
   const studentId = searchParams.get("studentId");
   return getChannels(studentId ? parseInt(studentId) : undefined);
-});
+}, { minRole: "member" });

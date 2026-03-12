@@ -7,12 +7,18 @@ import {
 } from "@/lib/zivvy/enrich";
 import { batchComputeEngagement } from "@/lib/contacts/engagement";
 import { populateContacts, refreshAllContacts } from "@/lib/contacts/populate";
+import { getSession, hasRole } from "@/lib/auth/session";
 
 /**
  * GET /api/sync-enrich — Status of enrichment data
  */
 export async function GET() {
   try {
+    const session = await getSession();
+    if (!session || !hasRole(session.role, "admin")) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
     ensureZivvySchema();
     const db = getDb();
 
@@ -48,8 +54,9 @@ export async function GET() {
         rank: total > 0 ? Math.round((withBelt / total) * 100) : 0,
       },
     });
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch (error) {
+    console.error("API Error [GET /api/sync-enrich]:", error);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
 
@@ -65,6 +72,11 @@ export async function GET() {
  */
 export async function POST(request: Request) {
   try {
+    const session = await getSession();
+    if (!session || !hasRole(session.role, "admin")) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
     ensureZivvySchema();
     ensureContactSchema();
     const db = getDb();
@@ -232,8 +244,8 @@ export async function POST(request: Request) {
     }
 
     return NextResponse.json({ success: true, scope, ...results });
-  } catch (error: any) {
-    console.error("[enrich] Error:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch (error) {
+    console.error("API Error [POST /api/sync-enrich]:", error);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

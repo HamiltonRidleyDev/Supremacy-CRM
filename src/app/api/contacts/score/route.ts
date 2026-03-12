@@ -1,9 +1,15 @@
 import { NextResponse } from "next/server";
 import { getDb, ensureContactSchema } from "@/lib/db";
 import { batchComputeEngagement, computeEngagement } from "@/lib/contacts/engagement";
+import { getSession, hasRole } from "@/lib/auth/session";
 
 export async function POST(request: Request) {
   try {
+    const session = await getSession();
+    if (!session || !hasRole(session.role, "admin")) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
     ensureContactSchema();
     const db = getDb();
     const body = await request.json().catch(() => ({}));
@@ -36,13 +42,19 @@ export async function POST(request: Request) {
     // Batch scoring (all contacts)
     const result = batchComputeEngagement(db);
     return NextResponse.json({ success: true, ...result });
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch (error) {
+    console.error("API Error [POST /api/contacts/score]:", error);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
 
 export async function GET() {
   try {
+    const session = await getSession();
+    if (!session || !hasRole(session.role, "admin")) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
     ensureContactSchema();
     const db = getDb();
 
@@ -60,7 +72,8 @@ export async function GET() {
     `).all();
 
     return NextResponse.json({ scored, total, lastScored, distribution });
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch (error) {
+    console.error("API Error [GET /api/contacts/score]:", error);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

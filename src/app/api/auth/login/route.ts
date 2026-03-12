@@ -4,6 +4,7 @@ import { ensureContactSchema } from "@/lib/db";
 import bcrypt from "bcryptjs";
 import { createSession, setSessionCookie } from "@/lib/auth/session";
 import { findOrCreateUserByContact, generateMagicCode } from "@/lib/auth/magic-code";
+import { checkRateLimit } from "@/lib/rate-limiter";
 
 /**
  * POST /api/auth/login
@@ -25,6 +26,16 @@ export async function POST(request: Request) {
     ensureContactSchema();
     const db = getDb();
     const body = await request.json();
+
+    // Rate limit all login attempts: 10 attempts per 15 minutes per identifier
+    const identifier = body.email || body.identifier || "unknown";
+    const rl = checkRateLimit(identifier.toLowerCase().trim(), "auth_login", 10, 900);
+    if (!rl.allowed) {
+      return NextResponse.json(
+        { error: `Too many attempts. Try again in ${rl.retryAfter} seconds.` },
+        { status: 429 }
+      );
+    }
 
     // Mode 1: Password login (admin/manager)
     if (body.email && body.password) {
@@ -135,13 +146,15 @@ export async function POST(request: Request) {
       const code = generateMagicCode(result.userId);
 
       // In production: send via SMS/email
-      // For now: return in response for development
+      // Code is logged server-side only for development testing
+      if (process.env.NODE_ENV !== "production") {
+        console.log(`[DEV] Magic code for ${identifier}: ${code}`);
+      }
+
       return NextResponse.json({
         success: true,
-        message: "Login code generated",
+        message: "Login code generated. Check your email or phone for the code.",
         isNew: result.isNew,
-        // DEV ONLY — remove in production
-        _devCode: process.env.NODE_ENV !== "production" ? code : undefined,
       });
     }
 
@@ -149,7 +162,8 @@ export async function POST(request: Request) {
       { error: "Provide { email, password } or { identifier } or { identifier, code }" },
       { status: 400 }
     );
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch (error) {
+    console.error("API Error [POST /api/auth/login]:", error);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

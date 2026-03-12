@@ -84,7 +84,8 @@ export async function GET() {
       totalClasses: attendance.length,
       uniqueTechniques: techniqueExposure.length,
     });
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch (error) {
+    console.error("API Error [GET /api/me/training]:", error);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

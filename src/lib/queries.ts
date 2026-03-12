@@ -930,6 +930,37 @@ export function endChatSession(sessionId: number, summary?: string) {
   ).run(summary || null, sessionId);
 }
 
+// ---- Pinned Items ----
+
+export function createPinnedItem(
+  sessionId: number,
+  userMessage: string,
+  assistantMessage: string,
+  contextSummary: string | null,
+  pinnedBy: string
+) {
+  const db = getDb();
+  return db.prepare(
+    "INSERT INTO pinned_items (session_id, user_message, assistant_message, context_summary, pinned_by) VALUES (?, ?, ?, ?, ?)"
+  ).run(sessionId, userMessage, assistantMessage, contextSummary, pinnedBy);
+}
+
+export function getPinnedItems(status = "active") {
+  const db = getDb();
+  return db.prepare(`
+    SELECT p.*, cs.source as chat_source
+    FROM pinned_items p
+    LEFT JOIN chat_sessions cs ON p.session_id = cs.id
+    WHERE p.status = ?
+    ORDER BY p.created_at DESC
+  `).all(status);
+}
+
+export function updatePinnedItemStatus(id: number, status: string) {
+  const db = getDb();
+  db.prepare("UPDATE pinned_items SET status = ? WHERE id = ?").run(status, id);
+}
+
 // ---- Instructor Insights ----
 
 export function getInstructorInsights(activeOnly = true) {
@@ -1223,12 +1254,31 @@ export function getStudentProfile(studentId?: number, leadId?: number) {
   return null;
 }
 
+// Allowlist of valid student_profiles columns to prevent SQL injection
+const ALLOWED_PROFILE_COLUMNS = new Set([
+  "motivation", "goals", "schedule_preference", "training_frequency_target",
+  "injuries_concerns", "gi_or_nogi", "instagram_handle", "occupation",
+  "emergency_contact_name", "emergency_contact_phone", "notes",
+  "preferred_class_times", "experience_level", "competition_interest",
+  "referred_by", "how_heard",
+]);
+
 export function upsertStudentProfile(
   fields: Record<string, string | number | null>,
   studentId?: number,
   leadId?: number
 ) {
   const db = getDb();
+
+  // Validate all field names against allowlist to prevent SQL injection
+  const safeFields: Record<string, string | number | null> = {};
+  for (const [key, val] of Object.entries(fields)) {
+    if (!ALLOWED_PROFILE_COLUMNS.has(key)) {
+      console.warn(`upsertStudentProfile: rejecting unknown column "${key}"`);
+      continue;
+    }
+    safeFields[key] = val;
+  }
 
   // Check if profile exists
   let existing;
@@ -1239,7 +1289,7 @@ export function upsertStudentProfile(
     // Update
     const sets: string[] = [];
     const vals: (string | number | null)[] = [];
-    for (const [key, val] of Object.entries(fields)) {
+    for (const [key, val] of Object.entries(safeFields)) {
       sets.push(`${key} = ?`);
       vals.push(val);
     }
@@ -1249,8 +1299,8 @@ export function upsertStudentProfile(
     db.prepare(`UPDATE student_profiles SET ${sets.join(", ")} WHERE id = ?`).run(...vals);
   } else {
     // Insert
-    const cols = [...Object.keys(fields)];
-    const vals: (string | number | null)[] = [...Object.values(fields)];
+    const cols = [...Object.keys(safeFields)];
+    const vals: (string | number | null)[] = [...Object.values(safeFields)];
     if (studentId) { cols.push("student_id"); vals.push(studentId); }
     if (leadId) { cols.push("lead_id"); vals.push(leadId); }
     const placeholders = cols.map(() => "?").join(", ");

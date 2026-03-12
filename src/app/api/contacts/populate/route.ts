@@ -1,20 +1,32 @@
 import { NextResponse } from "next/server";
 import { getDb, ensureContactSchema } from "@/lib/db";
 import { populateContacts } from "@/lib/contacts/populate";
+import { getSession, hasRole } from "@/lib/auth/session";
 
 export async function POST() {
   try {
+    const session = await getSession();
+    if (!session || !hasRole(session.role, "admin")) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
     ensureContactSchema();
     const db = getDb();
     const result = populateContacts(db);
     return NextResponse.json({ success: true, ...result });
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch (error) {
+    console.error("API Error [POST /api/contacts/populate]:", error);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
 
 export async function GET() {
   try {
+    const session = await getSession();
+    if (!session || !hasRole(session.role, "manager")) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
     ensureContactSchema();
     const db = getDb();
 
@@ -42,7 +54,8 @@ export async function GET() {
       households,
       linkCoverage: { withStudent, withLead, withMM, withZivvy },
     });
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch (error) {
+    console.error("API Error [GET /api/contacts/populate]:", error);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

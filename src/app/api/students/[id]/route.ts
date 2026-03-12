@@ -3,12 +3,18 @@ import { initDb, ensureContactSchema, ensureZivvySchema, ensureMMSchema } from "
 import { seed } from "@/lib/seed";
 import { getStudentKnowledgeMap, getStudentAttendanceHistory } from "@/lib/queries";
 import { getDb } from "@/lib/db";
+import { getSession, hasRole } from "@/lib/auth/session";
 
 export async function GET(
   _request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const session = await getSession();
+    if (!session || !hasRole(session.role, "manager")) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
     initDb();
     seed();
     ensureContactSchema();
@@ -113,7 +119,6 @@ export async function GET(
     });
   } catch (error) {
     console.error("API Error [GET /api/students/[id]]:", error);
-    const message = error instanceof Error ? error.message : "Internal server error";
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

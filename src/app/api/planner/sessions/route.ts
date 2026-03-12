@@ -12,4 +12,4 @@ export const GET = apiHandler((request) => {
 
   const sessions = getRecentChatSessions(20);
   return { sessions };
-});
+}, { minRole: "manager" });

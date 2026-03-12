@@ -1,9 +1,15 @@
 import { NextResponse } from "next/server";
 import { getDb, ensureMMSchema } from "@/lib/db";
+import { getSession, hasRole } from "@/lib/auth/session";
 
 /** GET /api/mm-insights — engagement analytics from Market Muscles data */
 export async function GET() {
   try {
+    const session = await getSession();
+    if (!session || !hasRole(session.role, "manager")) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
     ensureMMSchema();
     const db = getDb();
 
@@ -99,9 +105,7 @@ export async function GET() {
       studentEngagement,
     });
   } catch (err) {
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : "Unknown error" },
-      { status: 500 }
-    );
+    console.error("API Error [GET /api/mm-insights]:", err);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

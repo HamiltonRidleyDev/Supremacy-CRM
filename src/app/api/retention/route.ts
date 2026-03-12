@@ -8,4 +8,4 @@ export const GET = apiHandler(() => {
   const legacy = getRetentionMetrics();
   const riskPipeline = getRetentionByRisk();
   return { ...legacy, riskPipeline };
-});
+}, { minRole: "manager" });

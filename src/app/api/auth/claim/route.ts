@@ -40,7 +40,8 @@ export async function POST(request: Request) {
     ).run(hash, session.userId);
 
     return NextResponse.json({ success: true, message: "Password set successfully" });
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch (error) {
+    console.error("API Error [POST /api/auth/claim]:", error);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

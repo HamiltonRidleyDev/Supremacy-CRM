@@ -73,4 +73,4 @@ export const GET = apiHandler(() => {
     unreadConversations,
     pendingAccessRequests,
   };
-});
+}, { minRole: "manager" });

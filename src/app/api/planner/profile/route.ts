@@ -10,7 +10,7 @@ export const GET = apiHandler(() => {
   const insights = getInstructorInsights();
   const summary = getInsightsSummary();
   return { insights, summary };
-});
+}, { minRole: "manager" });
 
 export const DELETE = apiHandler((request) => {
   const { searchParams } = new URL(request.url);
@@ -22,4 +22,4 @@ export const DELETE = apiHandler((request) => {
 
   deactivateInsight(id);
   return NextResponse.json({ success: true });
-});
+}, { minRole: "manager" });

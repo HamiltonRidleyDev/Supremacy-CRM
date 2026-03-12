@@ -18,11 +18,19 @@ import {
 } from "@/lib/winback-prompt";
 import type { ChildInfo } from "@/lib/winback-prompt";
 
+import { getSession, hasRole } from "@/lib/auth/session";
+import { checkRateLimit } from "@/lib/rate-limiter";
+
 const anthropic = new Anthropic();
 
 // GET — fetch candidates + existing suggestions
 export async function GET() {
   try {
+    const session = await getSession();
+    if (!session || !hasRole(session.role, "manager")) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
     initDb();
     seed();
     ensureContactSchema();
@@ -55,14 +63,27 @@ export async function GET() {
     return NextResponse.json({ candidates, activeSuggestions, costTrends });
   } catch (error) {
     console.error("API Error [GET /api/winback]:", error);
-    const message = error instanceof Error ? error.message : "Internal server error";
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
 
 // POST — generate a win-back message for a specific contact
 export async function POST(request: Request) {
   try {
+    const session = await getSession();
+    if (!session || !hasRole(session.role, "manager")) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
+    // Rate limit: 10 win-back generations per hour per user
+    const limit = checkRateLimit(String(session.userId), "winback_generate", 10, 3600);
+    if (!limit.allowed) {
+      return NextResponse.json(
+        { error: `Rate limit exceeded. Try again in ${limit.retryAfter}s.` },
+        { status: 429 }
+      );
+    }
+
     initDb();
     seed();
     ensureContactSchema();
@@ -234,14 +255,18 @@ export async function POST(request: Request) {
     });
   } catch (error) {
     console.error("API Error [POST /api/winback]:", error);
-    const message = error instanceof Error ? error.message : "Internal server error";
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
 
 // PATCH — update suggestion status
 export async function PATCH(request: Request) {
   try {
+    const session = await getSession();
+    if (!session || !hasRole(session.role, "manager")) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
     initDb();
     seed();
     ensureContactSchema();
@@ -267,8 +292,7 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ success: true, suggestionId, status });
   } catch (error) {
     console.error("API Error [PATCH /api/winback]:", error);
-    const message = error instanceof Error ? error.message : "Internal server error";
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
 

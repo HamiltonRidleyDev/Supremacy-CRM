@@ -19,11 +19,29 @@ import {
   getInstructorInsights,
 } from "@/lib/queries";
 import { buildDashboardSystemPrompt } from "@/lib/dashboard-system-prompt";
+import { getSession } from "@/lib/auth/session";
+import { checkRateLimit } from "@/lib/rate-limiter";
+
+const MAX_MESSAGE_LENGTH = 5000;
 
 const anthropic = new Anthropic();
 
 export async function POST(request: Request) {
   try {
+    const session = await getSession();
+    if (!session || (session.role !== "admin" && session.role !== "manager")) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
+    // Rate limit: 20 requests per hour per user
+    const limit = checkRateLimit(String(session.userId), "dashboard_chat", 20, 3600);
+    if (!limit.allowed) {
+      return NextResponse.json(
+        { error: `Rate limit exceeded. Try again in ${limit.retryAfter}s.` },
+        { status: 429 }
+      );
+    }
+
     initDb();
     seed();
     ensureZivvySchema();
@@ -43,17 +61,24 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Message is required" }, { status: 400 });
     }
 
+    if (message.length > MAX_MESSAGE_LENGTH) {
+      return NextResponse.json(
+        { error: `Message too long (max ${MAX_MESSAGE_LENGTH} chars)` },
+        { status: 400 }
+      );
+    }
+
     // Create or retrieve session
     let currentSessionId = sessionId;
     if (!currentSessionId) {
       const loc = location && typeof location.lat === "number" && typeof location.lng === "number"
         ? { lat: location.lat, lng: location.lng, label: location.label || undefined }
         : undefined;
-      const result = createChatSession("Rodrigo", "dashboard", loc);
+      const result = createChatSession(session.displayName || "Manager", "dashboard", loc);
       currentSessionId = Number(result.lastInsertRowid);
     } else {
-      const session = getChatSession(currentSessionId);
-      if (!session) {
+      const chatSession = getChatSession(currentSessionId);
+      if (!chatSession) {
         return NextResponse.json({ error: "Session not found" }, { status: 404 });
       }
     }
@@ -117,7 +142,6 @@ export async function POST(request: Request) {
     });
   } catch (error) {
     console.error("API Error [POST /api/dashboard/chat]:", error);
-    const msg = error instanceof Error ? error.message : "Internal server error";
-    return NextResponse.json({ error: msg }, { status: 500 });
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

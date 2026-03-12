@@ -4,7 +4,7 @@ import { NextResponse } from "next/server";
 
 export const GET = apiHandler(() => {
   return getSurveyTemplates();
-});
+}, { minRole: "manager" });
 
 export const POST = apiHandler(async (request: Request) => {
   const body = await request.json();
@@ -17,4 +17,4 @@ export const POST = apiHandler(async (request: Request) => {
     typeof questions === "string" ? questions : JSON.stringify(questions)
   );
   return { id: Number(result.lastInsertRowid) };
-});
+}, { minRole: "manager" });

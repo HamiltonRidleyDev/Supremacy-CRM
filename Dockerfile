@@ -10,10 +10,10 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
-# Build args for Next.js build (these get inlined into client bundles)
-# Pass via docker compose build --build-arg or in docker-compose.yml
-ARG ANTHROPIC_API_KEY=""
-ARG JWT_SECRET="supremacy-bjj-production-secret"
+# Build args — required at build time for Next.js to inline into server bundles.
+# NEVER set defaults here — require explicit values.
+ARG ANTHROPIC_API_KEY
+ARG JWT_SECRET
 ENV ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY
 ENV JWT_SECRET=$JWT_SECRET
 
@@ -41,5 +41,8 @@ ENV DB_PATH=/app/data/supremacy.db
 
 USER nextjs
 EXPOSE 3000
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD wget --no-verbose --tries=1 --spider http://localhost:3000/ || exit 1
 
 CMD ["node", "server.js"]

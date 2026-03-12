@@ -119,8 +119,29 @@ You MUST respond with a JSON object (no markdown fences, just raw JSON):
 }`;
 }
 
+import { getSession } from "@/lib/auth/session";
+import { checkRateLimit } from "@/lib/rate-limiter";
+
+const MAX_SOURCE_LENGTH = 10000;
+const MAX_PROMPT_LENGTH = 5000;
+const MAX_REVISION_LENGTH = 2000;
+
 export async function POST(request: Request) {
   try {
+  const session = await getSession();
+  if (!session || (session.role !== "admin" && session.role !== "manager")) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  // Rate limit: 30 content generations per hour per user
+  const limit = checkRateLimit(String(session.userId), "content_generate", 30, 3600);
+  if (!limit.allowed) {
+    return NextResponse.json(
+      { error: `Rate limit exceeded. Try again in ${limit.retryAfter}s.` },
+      { status: 429 }
+    );
+  }
+
   initDb();
   seed();
 
@@ -150,6 +171,17 @@ export async function POST(request: Request) {
 
   const insights = getInstructorInsights() as InsightRecord[];
   const systemPrompt = buildContentSystemPrompt(insights);
+
+  // Input length validation
+  if (source && source.length > MAX_SOURCE_LENGTH) {
+    return NextResponse.json({ error: `Source too long (max ${MAX_SOURCE_LENGTH} chars)` }, { status: 400 });
+  }
+  if (customPrompt && customPrompt.length > MAX_PROMPT_LENGTH) {
+    return NextResponse.json({ error: `Prompt too long (max ${MAX_PROMPT_LENGTH} chars)` }, { status: 400 });
+  }
+  if (revisionNotes && revisionNotes.length > MAX_REVISION_LENGTH) {
+    return NextResponse.json({ error: `Revision notes too long (max ${MAX_REVISION_LENGTH} chars)` }, { status: 400 });
+  }
 
   // --- REVISION MODE ---
   if (pieceId && revisionNotes) {
@@ -253,8 +285,7 @@ Respond with a JSON object (no markdown fences):
   });
   } catch (error) {
     console.error("API Error [POST /api/content/generate]:", error);
-    const message = error instanceof Error ? error.message : "Internal server error";
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
 

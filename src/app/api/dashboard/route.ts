@@ -67,4 +67,4 @@ export const GET = apiHandler(() => {
     churnNamesByMonth,
     needsAttention: getNeedsAttention(),
   };
-});
+}, { minRole: "manager" });

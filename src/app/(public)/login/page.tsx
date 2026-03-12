@@ -17,7 +17,9 @@ export default function LoginPage() {
 function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const redirect = searchParams.get("redirect") || "/";
+  // Validate redirect — must be a same-origin relative path (no open redirect)
+  const rawRedirect = searchParams.get("redirect") || "/";
+  const redirect = rawRedirect.startsWith("/") && !rawRedirect.startsWith("//") ? rawRedirect : "/";
 
   const [mode, setMode] = useState<LoginMode>("magic");
   const [magicStep, setMagicStep] = useState<MagicStep>("identifier");
@@ -31,7 +33,7 @@ function LoginForm() {
   // Magic mode
   const [identifier, setIdentifier] = useState("");
   const [code, setCode] = useState("");
-  const [devCode, setDevCode] = useState("");
+  // devCode removed — codes are logged server-side only
 
   // Access request mode
   const [reqName, setReqName] = useState("");
@@ -92,9 +94,6 @@ function LoginForm() {
         return;
       }
 
-      if (data._devCode) {
-        setDevCode(data._devCode);
-      }
       setMagicStep("code");
     } catch {
       setError("Network error. Please try again.");
@@ -292,17 +291,6 @@ function LoginForm() {
                 </span>
               </p>
 
-              {/* Dev code display */}
-              {devCode && (
-                <div className="p-3 bg-warning/10 border border-warning/20 rounded-lg text-sm">
-                  <span className="text-warning font-medium">DEV MODE:</span>{" "}
-                  Your code is{" "}
-                  <span className="font-mono text-foreground font-bold tracking-widest">
-                    {devCode}
-                  </span>
-                </div>
-              )}
-
               <div>
                 <input
                   type="text"
@@ -329,7 +317,6 @@ function LoginForm() {
                 onClick={() => {
                   setMagicStep("identifier");
                   setCode("");
-                  setDevCode("");
                   setError("");
                 }}
                 className="w-full py-2 text-sm text-muted hover:text-foreground transition-colors"

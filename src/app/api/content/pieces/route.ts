@@ -21,7 +21,7 @@ export const GET = apiHandler((request) => {
   const pieces = getContentPieces(status);
   const stats = getContentQueueStats();
   return { pieces, stats };
-});
+}, { minRole: "manager" });
 
 export const PATCH = apiHandler(async (request) => {
   const body = await request.json();
@@ -48,4 +48,4 @@ export const PATCH = apiHandler(async (request) => {
   }
 
   return NextResponse.json({ success: true });
-});
+}, { minRole: "manager" });

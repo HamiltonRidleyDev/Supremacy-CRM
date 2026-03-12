@@ -15,10 +15,24 @@ const starters = [
   "Help me plan to hit 300 members",
 ];
 
+// Sanitize HTML to prevent XSS — strip all tags except safe formatting
+function sanitizeHtml(html: string): string {
+  return html
+    .replace(/<script[\s\S]*?<\/script>/gi, "")
+    .replace(/<style[\s\S]*?<\/style>/gi, "")
+    .replace(/on\w+="[^"]*"/gi, "")
+    .replace(/on\w+='[^']*'/gi, "")
+    .replace(/<(?!\/?(?:strong|em|b|i|br|p|ul|ol|li|span)\b)[^>]*>/gi, "");
+}
+
 function renderMarkdown(text: string) {
   return text.split("\n").map((line, i) => {
-    // Bold
-    const formatted = line.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
+    // Bold — apply sanitization after formatting
+    let formatted = line
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+      .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+      .replace(/\*(.+?)\*/g, "<em>$1</em>");
+    formatted = sanitizeHtml(formatted);
     if (line.startsWith("- ") || line.startsWith("* ")) {
       return <li key={i} className="ml-4 list-disc" dangerouslySetInnerHTML={{ __html: formatted.slice(2) }} />;
     }

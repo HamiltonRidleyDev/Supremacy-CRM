@@ -222,8 +222,11 @@ export default function PlannerPage() {
         <div key={i}>
           {lines.map((line, j) => {
             if (!line.trim()) return <div key={j} className="h-2" />;
-            let rendered = line.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-            rendered = rendered.replace(/\*(.+?)\*/g, '<em>$1</em>');
+            // Escape HTML first, then apply safe formatting
+            let rendered = line
+              .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+              .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+              .replace(/\*(.+?)\*/g, '<em>$1</em>');
             if (line.trim().startsWith("- ")) {
               return (
                 <div key={j} className="flex gap-2 ml-2 my-0.5">

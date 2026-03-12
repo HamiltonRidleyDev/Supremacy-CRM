@@ -9,7 +9,7 @@ export const GET = apiHandler((request: Request) => {
   const templateId = url.searchParams.get("template_id");
   const status = url.searchParams.get("status");
   return getSurveySends(templateId ? Number(templateId) : undefined, status || undefined);
-});
+}, { minRole: "manager" });
 
 export const POST = apiHandler(async (request: Request) => {
   const body = await request.json();
@@ -52,4 +52,4 @@ export const POST = apiHandler(async (request: Request) => {
   }
 
   return { sent: results.length, links: results.map(r => ({ ...r, url: `/s/${r.token}` })) };
-});
+}, { minRole: "manager" });
