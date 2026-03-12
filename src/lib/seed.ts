@@ -1,4 +1,5 @@
 import { initDb } from "./db";
+import bcrypt from "bcryptjs";
 
 export function seed() {
   const db = initDb();
@@ -114,15 +115,18 @@ export function seed() {
     }
   }
 
-  // Seed users (Rodrigo + Kyle only) if empty
+  // Seed users if empty
   const userCount = db.prepare("SELECT COUNT(*) as c FROM users").get() as { c: number };
   if (userCount.c === 0) {
     const insertUser = db.prepare(
-      `INSERT INTO users (email, phone, role, student_id, display_name, is_active, last_login)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO users (email, phone, role, password_hash, student_id, display_name, is_active, last_login)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
     );
-    insertUser.run("rodrigo@supremacyjj.com", "727-555-0001", "admin", null, "Rodrigo", 1, null);
-    insertUser.run("kyle@supremacyjj.com", "727-555-0002", "manager", null, "Kyle", 1, null);
+    const initialPassword = process.env.INITIAL_ADMIN_PASSWORD || "supremacy2026";
+    const hash = bcrypt.hashSync(initialPassword, 10);
+    insertUser.run("rodrigo@supremacyjj.com", "727-555-0001", "admin", hash, null, "Rodrigo", 1, null);
+    insertUser.run("dan@supremacyjj.com", null, "admin", hash, null, "Dan", 1, null);
+    insertUser.run("kyle@supremacyjj.com", "727-555-0002", "manager", null, null, "Kyle", 1, null);
   }
 
   // Seed community channels if empty
