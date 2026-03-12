@@ -147,11 +147,43 @@ const smallIcons: Record<string, React.ReactNode> = {
   ),
 };
 
+function formatAgo(dateStr: string) {
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  return `${Math.floor(hrs / 24)}d ago`;
+}
+
+function useLastSync() {
+  const [lastSync, setLastSync] = useState<string | null>(null);
+
+  useEffect(() => {
+    Promise.all([
+      fetch("/api/sync").then((r) => r.json()).catch(() => null),
+      fetch("/api/sync-mm").then((r) => r.json()).catch(() => null),
+    ]).then(([zivvy, mm]) => {
+      const dates: string[] = [];
+      if (zivvy?.lastSync?.completed_at) dates.push(zivvy.lastSync.completed_at);
+      if (mm?.lastSync?.completed_at) dates.push(mm.lastSync.completed_at);
+      if (dates.length > 0) {
+        dates.sort((a, b) => new Date(b).getTime() - new Date(a).getTime());
+        setLastSync(dates[0]);
+      }
+    });
+  }, []);
+
+  return lastSync;
+}
+
 export function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
   const [user, setUser] = useState<{ displayName: string; role: string } | null>(null);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const lastSync = useLastSync();
 
   useEffect(() => {
     fetch("/api/auth/me")
@@ -251,6 +283,14 @@ export function Sidebar() {
       </nav>
 
       <div className="p-4 border-t border-border space-y-3">
+        {lastSync && (
+          <div className="flex items-center gap-2 text-[11px] text-muted">
+            <svg className="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+            Last synced {formatAgo(lastSync)}
+          </div>
+        )}
         <Link
           href="/getting-started"
           className={`flex items-center gap-2 text-xs transition-colors ${

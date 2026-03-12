@@ -20,19 +20,29 @@ ENV JWT_SECRET=$JWT_SECRET
 RUN npm run build
 
 # --- Stage 3: Production runner ---
-FROM node:20-alpine AS runner
+# Use Debian-based image for Playwright browser compatibility (alpine lacks glibc)
+FROM node:20-slim AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=3000
 
+# Install Playwright system dependencies + Chromium
+RUN apt-get update && \
+    npx playwright install --with-deps chromium && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
+
 # Create non-root user
 RUN addgroup --system --gid 1001 nodejs && \
-    adduser --system --uid 1001 nextjs
+    adduser --system --uid 1001 --ingroup nodejs nextjs
 
 # Copy standalone output
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
 COPY --from=builder /app/public ./public
+
+# Copy Playwright browsers to nextjs user's cache (installed as root above)
+RUN cp -r /root/.cache/ms-playwright /home/nextjs/.cache/ms-playwright && \
+    chown -R nextjs:nodejs /home/nextjs/.cache
 
 # Create data directory for SQLite and set permissions
 RUN mkdir -p /app/data && chown -R nextjs:nodejs /app/data

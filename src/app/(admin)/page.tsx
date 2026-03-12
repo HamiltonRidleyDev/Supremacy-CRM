@@ -452,77 +452,42 @@ function ZipBubbleMap({ data }: { data: Array<{ zip: string; count: number }> })
   );
 }
 
-function SyncButton() {
+function SyncButton({ label, endpoint, formatResult }: {
+  label: string;
+  endpoint: string;
+  formatResult?: (data: any) => string;
+}) {
   const [syncing, setSyncing] = useState(false);
-  const [lastSync, setLastSync] = useState<SyncInfo | null>(null);
-  const [syncError, setSyncError] = useState<string | null>(null);
-  const [syncResult, setSyncResult] = useState<{
-    students_synced: number; leads_synced: number;
-    former_synced: number; duration_ms: number;
-  } | null>(null);
-
-  useEffect(() => {
-    fetch("/api/sync")
-      .then((r) => r.json())
-      .then((d) => setLastSync(d.lastSync))
-      .catch(() => {});
-  }, []);
+  const [result, setResult] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const handleSync = async () => {
     setSyncing(true);
-    setSyncError(null);
-    setSyncResult(null);
+    setError(null);
+    setResult(null);
     try {
-      const res = await fetch("/api/sync", { method: "POST" });
+      const res = await fetch(endpoint, { method: "POST" });
       const data = await res.json();
-      if (data.error && data.status !== "success") {
-        setSyncError(data.error);
-      } else if (data.status === "error") {
-        setSyncError(data.error || "Sync failed");
+      if (!res.ok || data.status === "error" || (data.error && data.status !== "success")) {
+        setError(data.error || "Sync failed");
       } else {
-        setSyncResult(data);
-        setLastSync({
-          status: "success", started_at: new Date().toISOString(),
-          completed_at: new Date().toISOString(),
-          students_synced: data.students_synced, leads_synced: data.leads_synced,
-          former_synced: data.former_synced, total_contacts: data.total_contacts,
-          error_message: null,
-        });
+        setResult(formatResult ? formatResult(data) : "Done");
       }
     } catch (e) {
-      setSyncError(e instanceof Error ? e.message : "Network error");
+      setError(e instanceof Error ? e.message : "Network error");
     } finally {
       setSyncing(false);
     }
   };
 
-  const formatAgo = (dateStr: string) => {
-    const diff = Date.now() - new Date(dateStr).getTime();
-    const mins = Math.floor(diff / 60000);
-    if (mins < 1) return "just now";
-    if (mins < 60) return `${mins}m ago`;
-    const hrs = Math.floor(mins / 60);
-    if (hrs < 24) return `${hrs}h ago`;
-    return `${Math.floor(hrs / 24)}d ago`;
-  };
-
   return (
-    <div className="flex items-center gap-3">
-      {lastSync?.status === "success" && (
-        <span className="text-xs text-muted">
-          Synced {formatAgo(lastSync.completed_at || lastSync.started_at)}
-        </span>
-      )}
-      {syncResult && (
-        <span className="text-xs text-success">
-          {syncResult.students_synced + syncResult.leads_synced + syncResult.former_synced} contacts in {(syncResult.duration_ms / 1000).toFixed(0)}s
-        </span>
-      )}
-      {syncError && <span className="text-xs text-danger truncate max-w-[200px]">{syncError}</span>}
+    <div className="flex items-center gap-2">
+      {result && <span className="text-xs text-success truncate max-w-[180px]">{result}</span>}
+      {error && <span className="text-xs text-danger truncate max-w-[180px]" title={error}>{error}</span>}
       <button
         onClick={handleSync}
         disabled={syncing}
-        className="px-3 py-1.5 text-xs font-medium rounded-lg border border-border hover:bg-card-hover disabled:opacity-50 transition-colors flex items-center gap-1.5"
+        className="px-3 py-1.5 text-xs font-medium rounded-lg border border-border hover:bg-card-hover disabled:opacity-50 transition-colors flex items-center gap-1.5 whitespace-nowrap"
       >
         {syncing ? (
           <>
@@ -537,10 +502,32 @@ function SyncButton() {
             <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
             </svg>
-            Sync Zivvy
+            {label}
           </>
         )}
       </button>
+    </div>
+  );
+}
+
+function SyncPanel() {
+  return (
+    <div className="flex items-center gap-2 flex-wrap justify-end">
+      <SyncButton
+        label="Sync Zivvy"
+        endpoint="/api/sync"
+        formatResult={(d) => `${d.students_synced + d.leads_synced + d.former_synced} contacts in ${(d.duration_ms / 1000).toFixed(0)}s`}
+      />
+      <SyncButton
+        label="Sync Market Muscles"
+        endpoint="/api/sync-mm"
+        formatResult={(d) => `${d.contacts_synced} contacts, ${d.conversations_synced} convos`}
+      />
+      <SyncButton
+        label="Enrich Data"
+        endpoint="/api/sync-enrich"
+        formatResult={(d) => `${d.engagement?.contacts_scored || 0} scored`}
+      />
     </div>
   );
 }
@@ -640,7 +627,7 @@ export default function Dashboard() {
           <h1 className="text-2xl font-bold">Dashboard</h1>
           <p className="text-sm text-muted mt-1">Supremacy BJJ — Largo, FL</p>
         </div>
-        <SyncButton />
+        <SyncPanel />
       </div>
 
       {/* Pinned items from Quick chat */}

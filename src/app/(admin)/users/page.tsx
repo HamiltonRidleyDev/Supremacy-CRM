@@ -84,6 +84,7 @@ export default function UsersPage() {
   const [loading, setLoading] = useState(true);
   const [filterRole, setFilterRole] = useState<string>("all");
   const [saving, setSaving] = useState<number | null>(null);
+  const [showAddModal, setShowAddModal] = useState(false);
 
   const [error, setError] = useState<string | null>(null);
 
@@ -144,9 +145,17 @@ export default function UsersPage() {
 
   return (
     <div className="max-w-7xl">
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold">User Management</h1>
-        <p className="text-sm text-muted mt-1">Assign roles and manage access levels</p>
+      <div className="mb-8 flex items-start justify-between">
+        <div>
+          <h1 className="text-2xl font-bold">User Management</h1>
+          <p className="text-sm text-muted mt-1">Assign roles and manage access levels</p>
+        </div>
+        <button
+          onClick={() => setShowAddModal(true)}
+          className="px-4 py-2 text-sm font-medium rounded-lg bg-accent text-white hover:bg-accent/90 transition-colors"
+        >
+          + Add User
+        </button>
       </div>
 
       {/* Role summary cards */}
@@ -251,6 +260,14 @@ export default function UsersPage() {
         </table>
       </div>
 
+      {/* Add User Modal */}
+      {showAddModal && (
+        <AddUserModal
+          onClose={() => setShowAddModal(false)}
+          onCreated={() => { setShowAddModal(false); fetchUsers(); }}
+        />
+      )}
+
       {/* Permission matrix reference */}
       <div className="mt-8 bg-card rounded-xl border border-border overflow-hidden">
         <div className="p-5 border-b border-border">
@@ -303,6 +320,106 @@ export default function UsersPage() {
             </tbody>
           </table>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function AddUserModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
+  const [displayName, setDisplayName] = useState("");
+  const [email, setEmail] = useState("");
+  const [role, setRole] = useState<string>("member");
+  const [password, setPassword] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSaving(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/users", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ displayName, email, role, password }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || "Failed to create user");
+      } else {
+        onCreated();
+      }
+    } catch {
+      setError("Network error");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-card rounded-xl border border-border w-full max-w-md" onClick={(e) => e.stopPropagation()}>
+        <div className="p-5 border-b border-border flex items-center justify-between">
+          <h2 className="font-semibold">Add User</h2>
+          <button onClick={onClose} className="text-muted hover:text-foreground text-lg">&times;</button>
+        </div>
+        <form onSubmit={handleSubmit} className="p-5 space-y-4">
+          <div>
+            <label className="block text-xs text-muted mb-1">Display Name</label>
+            <input
+              type="text"
+              required
+              value={displayName}
+              onChange={(e) => setDisplayName(e.target.value)}
+              className="w-full px-3 py-2 rounded-lg bg-background border border-border text-sm focus:outline-none focus:ring-1 focus:ring-accent/50"
+              placeholder="e.g. Dan Kemp"
+            />
+          </div>
+          <div>
+            <label className="block text-xs text-muted mb-1">Email</label>
+            <input
+              type="email"
+              required
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="w-full px-3 py-2 rounded-lg bg-background border border-border text-sm focus:outline-none focus:ring-1 focus:ring-accent/50"
+              placeholder="e.g. dan@supremacyjj.com"
+            />
+          </div>
+          <div>
+            <label className="block text-xs text-muted mb-1">Role</label>
+            <select
+              value={role}
+              onChange={(e) => setRole(e.target.value)}
+              className="w-full px-3 py-2 rounded-lg bg-background border border-border text-sm focus:outline-none focus:ring-1 focus:ring-accent/50"
+            >
+              {ROLES.map((r) => (
+                <option key={r} value={r}>{roleConfig[r].label}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs text-muted mb-1">Temporary Password</label>
+            <input
+              type="text"
+              required
+              minLength={8}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="w-full px-3 py-2 rounded-lg bg-background border border-border text-sm focus:outline-none focus:ring-1 focus:ring-accent/50"
+              placeholder="Min 8 characters"
+            />
+          </div>
+          {error && <p className="text-xs text-danger">{error}</p>}
+          <div className="flex gap-3 justify-end pt-2">
+            <button type="button" onClick={onClose} className="px-4 py-2 text-sm rounded-lg border border-border hover:bg-card-hover transition-colors">
+              Cancel
+            </button>
+            <button type="submit" disabled={saving} className="px-4 py-2 text-sm font-medium rounded-lg bg-accent text-white hover:bg-accent/90 disabled:opacity-50 transition-colors">
+              {saving ? "Creating..." : "Create User"}
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   );
