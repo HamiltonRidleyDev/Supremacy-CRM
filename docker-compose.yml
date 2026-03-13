@@ -3,8 +3,8 @@ services:
     build:
       context: .
       args:
-        - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:?ANTHROPIC_API_KEY must be set in .env}
-        - JWT_SECRET=${JWT_SECRET:?JWT_SECRET must be set in .env - generate with: openssl rand -hex 32}
+        - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:?missing}
+        - JWT_SECRET=${JWT_SECRET:?missing}
     ports:
       - "3000:3000"
     volumes:

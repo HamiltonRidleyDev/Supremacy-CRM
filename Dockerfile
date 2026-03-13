@@ -45,7 +45,8 @@ COPY --from=builder /app/.next/static ./.next/static
 COPY --from=builder /app/public ./public
 
 # Copy Playwright browsers to nextjs user's cache (installed as root above)
-RUN cp -r /root/.cache/ms-playwright /home/nextjs/.cache/ms-playwright && \
+RUN mkdir -p /home/nextjs/.cache && \
+    cp -r /root/.cache/ms-playwright /home/nextjs/.cache/ms-playwright && \
     chown -R nextjs:nodejs /home/nextjs/.cache
 
 # Create data directory for SQLite and set permissions
