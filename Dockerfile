@@ -26,8 +26,9 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=3000
 
-# Install Playwright system dependencies + Chromium
+# Install musl (for Alpine-compiled better-sqlite3) + Playwright system deps + Chromium
 RUN apt-get update && \
+    apt-get install -y musl && \
     npx playwright install --with-deps chromium && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
