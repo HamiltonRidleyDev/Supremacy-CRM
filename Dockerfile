@@ -1,11 +1,16 @@
 # --- Stage 1: Install dependencies ---
-FROM node:20-alpine AS deps
+# All stages use Debian-slim so native modules (better-sqlite3) compile
+# against the same glibc/libstdc++ that the runner provides.
+FROM node:20-slim AS deps
 WORKDIR /app
+RUN apt-get update && \
+    apt-get install -y build-essential python3 && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
 COPY package.json package-lock.json* ./
 RUN npm ci
 
 # --- Stage 2: Build the application ---
-FROM node:20-alpine AS builder
+FROM node:20-slim AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
@@ -20,15 +25,13 @@ ENV JWT_SECRET=$JWT_SECRET
 RUN npm run build
 
 # --- Stage 3: Production runner ---
-# Use Debian-based image for Playwright browser compatibility (alpine lacks glibc)
 FROM node:20-slim AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=3000
 
-# Install musl (for Alpine-compiled better-sqlite3) + Playwright system deps + Chromium
+# Install Playwright system dependencies + Chromium
 RUN apt-get update && \
-    apt-get install -y musl && \
     npx playwright install --with-deps chromium && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
