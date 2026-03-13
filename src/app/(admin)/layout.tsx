@@ -3,6 +3,7 @@ import { getSession, hasRole } from "@/lib/auth/session";
 import { Sidebar } from "@/components/Sidebar";
 import { GuidedTour } from "@/components/GuidedTour";
 import { FeedbackButton } from "@/components/FeedbackButton";
+import { QuickStartWrapper } from "@/components/QuickStartWrapper";
 
 export default async function AdminLayout({
   children,
@@ -28,6 +29,7 @@ export default async function AdminLayout({
       </main>
       <FeedbackButton />
       <GuidedTour />
+      <QuickStartWrapper />
     </div>
   );
 }

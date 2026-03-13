@@ -147,6 +147,49 @@ const smallIcons: Record<string, React.ReactNode> = {
   ),
 };
 
+const QUICK_START_LS_KEY = "supremacy_quick_start";
+
+function QuickStartToggle() {
+  const [enabled, setEnabled] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    const val = localStorage.getItem(QUICK_START_LS_KEY) === "true";
+    setEnabled(val);
+    setLoaded(true);
+  }, []);
+
+  const toggle = async () => {
+    const newVal = !enabled;
+    setEnabled(newVal);
+    localStorage.setItem(QUICK_START_LS_KEY, String(newVal));
+    try {
+      await fetch("/api/preferences", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ quickStart: newVal }),
+      });
+    } catch { /* sync failed silently */ }
+  };
+
+  if (!loaded) return null;
+
+  return (
+    <button
+      onClick={toggle}
+      className="flex items-center gap-2 text-xs text-muted hover:text-foreground transition-colors w-full"
+      title={enabled ? "Quick Start is ON — app opens with voice assistant" : "Quick Start is OFF"}
+    >
+      <div className={`w-8 h-4 rounded-full relative transition-colors ${enabled ? "bg-accent" : "bg-white/10"}`}>
+        <div className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-transform ${enabled ? "translate-x-4.5 left-0.5" : "left-0.5"}`}
+          style={{ transform: enabled ? "translateX(16px)" : "translateX(0)" }}
+        />
+      </div>
+      Quick Start
+    </button>
+  );
+}
+
 function formatAgo(dateStr: string) {
   const diff = Date.now() - new Date(dateStr).getTime();
   const mins = Math.floor(diff / 60000);
@@ -291,6 +334,7 @@ export function Sidebar() {
             Last synced {formatAgo(lastSync)}
           </div>
         )}
+        <QuickStartToggle />
         <Link
           href="/getting-started"
           className={`flex items-center gap-2 text-xs transition-colors ${
