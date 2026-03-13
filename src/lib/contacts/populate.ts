@@ -156,6 +156,7 @@ export function populateContacts(db: Database.Database): PopulateResult {
 
     // -------------------------------------------------------
     // PASS 4: Fill in mm_id on contacts where student has it but contact doesn't
+    // Guard against assigning an mm_id that another contact already has.
     // -------------------------------------------------------
     db.prepare(`
       UPDATE contacts SET
@@ -166,6 +167,11 @@ export function populateContacts(db: Database.Database): PopulateResult {
         AND EXISTS (
           SELECT 1 FROM students s WHERE s.id = contacts.student_id
           AND s.mm_id IS NOT NULL AND s.mm_id != ''
+        )
+        AND NOT EXISTS (
+          SELECT 1 FROM contacts c2
+          WHERE c2.mm_id = (SELECT s2.mm_id FROM students s2 WHERE s2.id = contacts.student_id)
+            AND c2.id != contacts.id
         )
     `).run();
 
@@ -179,6 +185,11 @@ export function populateContacts(db: Database.Database): PopulateResult {
         AND EXISTS (
           SELECT 1 FROM students s WHERE s.id = contacts.student_id
           AND s.zivvy_id IS NOT NULL
+        )
+        AND NOT EXISTS (
+          SELECT 1 FROM contacts c2
+          WHERE c2.zivvy_id = (SELECT CAST(s2.zivvy_id AS TEXT) FROM students s2 WHERE s2.id = contacts.student_id)
+            AND c2.id != contacts.id
         )
     `).run();
   });
@@ -403,6 +414,18 @@ export function refreshContactFromSources(db: Database.Database, contactId: numb
   if (contact.student_id) {
     const student = db.prepare("SELECT * FROM students WHERE id = ?").get(contact.student_id) as any;
     if (student) {
+      // Only set mm_id/zivvy_id if no other contact already has that value
+      const newMmId = student.mm_id || null;
+      const newZivvyId = student.zivvy_id ? String(student.zivvy_id) : null;
+
+      const mmIdSafe = newMmId && !db.prepare(
+        "SELECT 1 FROM contacts WHERE mm_id = ? AND id != ?"
+      ).get(newMmId, contactId) ? newMmId : null;
+
+      const zivvyIdSafe = newZivvyId && !db.prepare(
+        "SELECT 1 FROM contacts WHERE zivvy_id = ? AND id != ?"
+      ).get(newZivvyId, contactId) ? newZivvyId : null;
+
       db.prepare(`
         UPDATE contacts SET
           first_name = ?, last_name = ?, email = ?, phone = ?,
@@ -421,8 +444,8 @@ export function refreshContactFromSources(db: Database.Database, contactId: numb
         student.membership_status === "active" ? "active_member" : "former_member",
         student.monthly_rate,
         student.age_group,
-        student.zivvy_id ? String(student.zivvy_id) : null,
-        student.mm_id || null,
+        zivvyIdSafe,
+        mmIdSafe,
         contactId
       );
     }
