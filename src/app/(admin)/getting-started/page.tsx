@@ -159,6 +159,49 @@ const workflows: Workflow[] = [
     ],
   },
   {
+    id: "mobile",
+    title: "Mobile Setup & Quick Access",
+    subtitle: "Install the app on your phone and set up voice-first access",
+    color: "text-emerald-400",
+    icon: (
+      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M10.5 1.5H8.25A2.25 2.25 0 006 3.75v16.5a2.25 2.25 0 002.25 2.25h7.5A2.25 2.25 0 0018 20.25V3.75a2.25 2.25 0 00-2.25-2.25H13.5m-3 0V3h3V1.5m-3 0h3m-3 18.75h3" />
+      </svg>
+    ),
+    steps: [
+      {
+        page: "Install the App",
+        href: "/",
+        action: "Add Supremacy to your home screen",
+        detail: "On Android: Open the app in Chrome > tap the three-dot menu (top right) > 'Add to Home Screen' or 'Install app'. On iPhone: Open in Safari > tap the Share button > 'Add to Home Screen'. This creates a full-screen app experience — no browser bar.",
+      },
+      {
+        page: "Sidebar > Quick Start Toggle",
+        href: "/",
+        action: "Enable Quick Start mode",
+        detail: "Open the sidebar (tap the menu icon) and scroll to the bottom. Toggle 'Quick Start' ON. Now every time you open the app, you'll land on a voice-first screen with a big mic button — ready to talk immediately.",
+      },
+      {
+        page: "Quick Start Overlay",
+        href: "/",
+        action: "Talk to the AI assistant on launch",
+        detail: "With Quick Start enabled, open the app and tap the mic. Ask anything: 'How are we doing this month?', 'Who's at risk?', 'What should I focus on today?' The AI has full context on your gym data — members, revenue, trends, leads. Save any response as a note with one tap.",
+      },
+      {
+        page: "Quick Notes",
+        href: "/notes",
+        action: "Capture ideas between classes",
+        detail: "Use Quick Start or the Quick Notes page to voice-record thoughts, lesson ideas, student observations, or business ideas. Notes are saved with timestamps and tags. They can feed into the Mat Planner as context for future lesson plans.",
+      },
+      {
+        page: "Quick Assistant",
+        href: "/quick",
+        action: "Full voice assistant for staff",
+        detail: "The /quick page is a dedicated voice assistant with a Notes tab. Say 'save that' or 'pin that' to bookmark important AI responses. Access from the sidebar under Daily Ops > Quick Assistant.",
+      },
+    ],
+  },
+  {
     id: "operations",
     title: "Daily Gym Operations",
     subtitle: "Stay on top of the day-to-day without digging through multiple systems",
@@ -272,6 +315,13 @@ const pages: PageInfo[] = [
     description: "Create survey templates, send to bulk recipients via SMS/email/link, and collect responses. Templates target students or leads with custom questions.",
     dataSource: "Our survey system",
     bestFor: ["New member onboarding", "Exit interviews", "Collecting preferences"],
+  },
+  {
+    name: "Quick Start (Voice Overlay)",
+    href: "/",
+    description: "Voice-first screen that appears when you open the app (if enabled in sidebar settings). Big mic button, full AI chat with gym data context, and one-tap save-to-notes. Designed for capturing ideas or asking questions the moment you open the app.",
+    dataSource: "Claude AI + all gym data (same as Dashboard Chat)",
+    bestFor: ["Rodrigo (voice-first workflow)", "Quick questions on the go", "Capturing ideas before you forget"],
   },
   {
     name: "Quick Notes",
