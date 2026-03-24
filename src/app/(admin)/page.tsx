@@ -1,12 +1,13 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import DashboardChat from "@/components/DashboardChat";
 import ActionCenter from "@/components/ActionCenter";
 import InfoTip from "@/components/InfoTip";
 import PinnedItems from "@/components/PinnedItems";
+import { useIsMobile } from "@/hooks/useIsMobile";
 
 interface DashboardData {
   stats: {
@@ -553,6 +554,8 @@ const sections: { key: Section; label: string }[] = [
 ];
 
 export default function Dashboard() {
+  const { isMobile, isReady } = useIsMobile();
+  const router = useRouter();
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -563,6 +566,13 @@ export default function Dashboard() {
   const [memberGoal, setMemberGoal] = useState(300);
   const [winbackData, setWinbackData] = useState<{ candidates: any[]; activeSuggestions: any[]; costTrends: Record<string, any> } | null>(null);
   const [winbackLoading, setWinbackLoading] = useState(false);
+
+  // Desktop default: redirect to Daily Briefing
+  useEffect(() => {
+    if (isReady && !isMobile) {
+      router.replace("/briefing");
+    }
+  }, [isReady, isMobile, router]);
 
   useEffect(() => {
     fetch("/api/dashboard")
