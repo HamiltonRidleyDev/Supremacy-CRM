@@ -45,6 +45,11 @@ const TOUR_STEPS: TourStep[] = [
     page: "/content",
   },
   {
+    title: "Re-engagement",
+    body: "Active members who stopped showing up. AI drafts personal check-in texts in your voice — review, edit, approve, and send. Tracks prior outreach so you never nag. This is your #1 retention tool.",
+    page: "/re-engagement",
+  },
+  {
     title: "Leads / CRM",
     body: "Track every prospect from first contact through sign-up. Pipeline view, table view, and a conversion funnel that shows monthly drop-off rates.",
     page: "/leads",

@@ -59,16 +59,22 @@ export function useVoiceInput(
     };
 
     recognition.onresult = (event: SpeechRecognitionEvent) => {
+      // Rebuild transcript from ALL results each time to avoid duplication.
+      // The results array grows over the session — each entry is either
+      // final (locked in) or interim (still changing). We walk the full
+      // array and concatenate, which is safe and idempotent.
+      let final = "";
       let interim = "";
-      for (let i = event.resultIndex; i < event.results.length; i++) {
+      for (let i = 0; i < event.results.length; i++) {
         const result = event.results[i];
         if (result.isFinal) {
-          finalTranscript += result[0].transcript + " ";
+          final += result[0].transcript + " ";
         } else {
           interim += result[0].transcript;
         }
       }
-      const full = (finalTranscript + interim).trim();
+      finalTranscript = final;
+      const full = (final + interim).trim();
       setTranscript(full);
       onTranscript?.(full);
     };

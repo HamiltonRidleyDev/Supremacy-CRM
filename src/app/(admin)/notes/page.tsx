@@ -19,7 +19,10 @@ export default function NotesPage() {
   const [newTags, setNewTags] = useState("");
   const [saving, setSaving] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
+  const [showComposer, setShowComposer] = useState(false);
   const [showUsed, setShowUsed] = useState(true);
+  const [justSaved, setJustSaved] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState<number | null>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const recognitionRef = useRef<any>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -50,11 +53,15 @@ export default function NotesPage() {
     setNewNote("");
     setNewTags("");
     setSaving(false);
+    setShowComposer(false);
+    setJustSaved(true);
+    setTimeout(() => setJustSaved(false), 2000);
     fetchNotes();
   };
 
   const handleDelete = async (id: number) => {
     await fetch(`/api/notes?id=${id}`, { method: "DELETE" });
+    setDeleteConfirm(null);
     fetchNotes();
   };
 
@@ -79,19 +86,23 @@ export default function NotesPage() {
     recognition.interimResults = true;
     recognition.lang = "en-US";
 
-    let finalTranscript = newNote;
+    const existingText = newNote;
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     recognition.onresult = (event: any) => {
+      // Rebuild from ALL results each time to avoid duplication.
+      let final = "";
       let interim = "";
-      for (let i = event.resultIndex; i < event.results.length; i++) {
+      for (let i = 0; i < event.results.length; i++) {
         if (event.results[i].isFinal) {
-          finalTranscript += (finalTranscript ? " " : "") + event.results[i][0].transcript;
+          final += event.results[i][0].transcript + " ";
         } else {
           interim += event.results[i][0].transcript;
         }
       }
-      setNewNote(finalTranscript + (interim ? " " + interim : ""));
+      const voiceText = (final + interim).trim();
+      const combined = existingText ? existingText + " " + voiceText : voiceText;
+      setNewNote(combined);
     };
 
     recognition.onerror = () => {
@@ -100,18 +111,28 @@ export default function NotesPage() {
 
     recognition.onend = () => {
       setIsRecording(false);
-      setNewNote(finalTranscript);
     };
 
     recognitionRef.current = recognition;
     recognition.start();
     setIsRecording(true);
+    setShowComposer(true);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
       handleSave();
     }
+  };
+
+  const handleDiscard = () => {
+    if (isRecording && recognitionRef.current) {
+      recognitionRef.current.stop();
+      setIsRecording(false);
+    }
+    setNewNote("");
+    setNewTags("");
+    setShowComposer(false);
   };
 
   const unused = notes.filter((n) => !n.is_used);
@@ -131,72 +152,139 @@ export default function NotesPage() {
   }
 
   return (
-    <div className="max-w-4xl">
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold">Quick Notes</h1>
-        <p className="text-sm text-muted mt-1">
-          Capture ideas anytime — voice or text. These feed into Mat Planner sessions.
+    <div className="max-w-2xl mx-auto">
+      {/* Header */}
+      <div className="mb-6 text-center md:text-left">
+        <h1 className="text-xl md:text-2xl font-bold">Quick Notes</h1>
+        <p className="text-xs md:text-sm text-muted mt-1">
+          Tap the mic, speak your idea, then save. Notes feed into Mat Planner.
         </p>
       </div>
 
-      {/* Input Card */}
-      <div className="bg-card rounded-xl border border-accent/30 p-5 mb-8">
-        <div className="flex items-center gap-3 mb-3">
+      {/* ===== MAIN ACTION: Big Voice Button (when composer is closed) ===== */}
+      {!showComposer && (
+        <div className="flex flex-col items-center gap-4 mb-8">
           <button
             onClick={toggleVoice}
-            className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all ${
-              isRecording
-                ? "bg-danger text-white animate-pulse"
-                : "bg-accent/10 text-accent hover:bg-accent/20"
-            }`}
+            className="w-24 h-24 md:w-20 md:h-20 rounded-full bg-accent text-white flex items-center justify-center shadow-lg active:scale-95 transition-transform"
           >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-10 h-10 md:w-8 md:h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                 d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
             </svg>
-            {isRecording ? "Recording... tap to stop" : "Voice Note"}
           </button>
-          <span className="text-xs text-muted">or type below</span>
+          <span className="text-sm text-muted">Tap to record a voice note</span>
+
+          <button
+            onClick={() => setShowComposer(true)}
+            className="text-xs text-accent hover:underline mt-1"
+          >
+            or type a note
+          </button>
+
+          {/* Just saved confirmation */}
+          {justSaved && (
+            <div className="flex items-center gap-2 text-sm text-success animate-in fade-in">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              </svg>
+              Note saved
+            </div>
+          )}
         </div>
+      )}
 
-        <textarea
-          ref={textareaRef}
-          value={newNote}
-          onChange={(e) => setNewNote(e.target.value)}
-          onKeyDown={handleKeyDown}
-          placeholder="What's on your mind, Professor? Lesson ideas, student observations, technique notes..."
-          className="w-full bg-background border border-border rounded-lg px-4 py-3 text-sm resize-none focus:outline-none focus:border-accent/50 placeholder:text-muted/50"
-          rows={3}
-        />
+      {/* ===== COMPOSER (expanded state) ===== */}
+      {showComposer && (
+        <div className="bg-card rounded-2xl border border-accent/30 p-4 md:p-5 mb-6 mx-auto">
+          {/* Recording indicator */}
+          {isRecording && (
+            <div className="flex items-center justify-center gap-2 mb-3">
+              <span className="w-3 h-3 rounded-full bg-danger animate-pulse" />
+              <span className="text-sm font-medium text-danger">Listening...</span>
+            </div>
+          )}
 
-        <div className="flex items-center justify-between mt-3">
+          {/* Voice toggle (inside composer) */}
+          <div className="flex justify-center mb-3">
+            <button
+              onClick={toggleVoice}
+              className={`w-16 h-16 rounded-full flex items-center justify-center transition-all active:scale-95 ${
+                isRecording
+                  ? "bg-danger text-white animate-pulse shadow-lg shadow-danger/30"
+                  : "bg-accent/10 text-accent hover:bg-accent/20"
+              }`}
+            >
+              {isRecording ? (
+                <svg className="w-7 h-7" fill="currentColor" viewBox="0 0 24 24">
+                  <rect x="6" y="6" width="12" height="12" rx="2" />
+                </svg>
+              ) : (
+                <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                    d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+                </svg>
+              )}
+            </button>
+          </div>
+          <p className="text-center text-xs text-muted mb-3">
+            {isRecording ? "Tap stop when done" : "Tap mic to add more, or edit below"}
+          </p>
+
+          {/* Text area */}
+          <textarea
+            ref={textareaRef}
+            value={newNote}
+            onChange={(e) => setNewNote(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder="What's on your mind, Professor?"
+            className="w-full bg-background border border-border rounded-xl px-4 py-3 text-sm md:text-base resize-none focus:outline-none focus:border-accent/50 placeholder:text-muted/50 min-h-[100px]"
+            rows={4}
+            autoFocus={!isRecording}
+          />
+
+          {/* Tags */}
           <input
             value={newTags}
             onChange={(e) => setNewTags(e.target.value)}
             placeholder="Tags (optional): guard, Marcus, competition..."
-            className="flex-1 bg-background border border-border rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-accent/50 placeholder:text-muted/50 mr-3"
+            className="w-full bg-background border border-border rounded-xl px-4 py-2.5 text-xs md:text-sm mt-2 focus:outline-none focus:border-accent/50 placeholder:text-muted/50"
           />
-          <button
-            onClick={handleSave}
-            disabled={!newNote.trim() || saving}
-            className="px-5 py-2 rounded-lg text-sm font-medium bg-accent text-white hover:bg-accent-dim transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-          >
-            {saving ? "Saving..." : "Save Note"}
-          </button>
-        </div>
-        <p className="text-[10px] text-muted mt-2">Ctrl+Enter to save</p>
-      </div>
 
-      {/* Stats */}
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-4">
+          {/* Action buttons — stacked on mobile */}
+          <div className="flex flex-col-reverse sm:flex-row gap-2 mt-4">
+            <button
+              onClick={handleDiscard}
+              className="flex-1 sm:flex-none px-4 py-3 sm:py-2 rounded-xl text-sm font-medium text-muted hover:text-foreground hover:bg-background border border-border transition-colors"
+            >
+              Discard
+            </button>
+            <button
+              onClick={handleSave}
+              disabled={!newNote.trim() || saving}
+              className="flex-1 px-6 py-3 sm:py-2 rounded-xl text-sm font-medium bg-accent text-white hover:bg-accent-dim transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+            >
+              {saving ? "Saving..." : "Save Note"}
+            </button>
+          </div>
+
+          {/* Hint */}
+          <p className="text-center text-[11px] text-muted/60 mt-3">
+            Tip: In the Quick Assistant, say &quot;pin that&quot; to save an AI response as a note
+          </p>
+        </div>
+      )}
+
+      {/* ===== NOTES LIST ===== */}
+      <div className="flex items-center justify-between mb-3 px-1">
+        <div className="flex items-center gap-3">
           <span className="text-sm">
             <span className="font-bold text-accent">{unused.length}</span>
-            <span className="text-muted ml-1">unused notes</span>
+            <span className="text-muted ml-1">unused</span>
           </span>
           <span className="text-sm">
             <span className="font-bold text-muted">{used.length}</span>
-            <span className="text-muted ml-1">used in plans</span>
+            <span className="text-muted ml-1">used</span>
           </span>
         </div>
         <button
@@ -207,7 +295,6 @@ export default function NotesPage() {
         </button>
       </div>
 
-      {/* Notes List */}
       {error ? (
         <div className="text-center py-12">
           <p className="text-danger font-medium">Failed to load notes</p>
@@ -221,7 +308,7 @@ export default function NotesPage() {
           <p className="text-muted">No notes yet. Record your first idea above.</p>
         </div>
       ) : (
-        <div className="space-y-3">
+        <div className="space-y-2">
           {displayed.map((note) => (
             <div
               key={note.id}
@@ -229,10 +316,10 @@ export default function NotesPage() {
                 note.is_used ? "border-border opacity-60" : "border-border hover:border-accent/30"
               }`}
             >
-              <div className="flex items-start justify-between gap-4">
+              <div className="flex items-start justify-between gap-3">
                 <div className="flex-1 min-w-0">
                   <p className="text-sm leading-relaxed">{note.content}</p>
-                  <div className="flex items-center gap-3 mt-2">
+                  <div className="flex items-center gap-2 mt-2 flex-wrap">
                     <span className="text-xs text-muted">{formatDate(note.created_at)}</span>
                     {note.tags && (
                       <div className="flex gap-1.5 flex-wrap">
@@ -253,15 +340,34 @@ export default function NotesPage() {
                     )}
                   </div>
                 </div>
-                <button
-                  onClick={() => handleDelete(note.id)}
-                  className="text-muted hover:text-danger transition-colors shrink-0 p-1"
-                  title="Delete note"
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
+                {/* Delete: tap once to reveal confirm, tap again to delete */}
+                {deleteConfirm === note.id ? (
+                  <div className="flex items-center gap-1 shrink-0">
+                    <button
+                      onClick={() => handleDelete(note.id)}
+                      className="text-xs px-2 py-1.5 rounded-lg bg-danger/10 text-danger font-medium active:bg-danger/20"
+                    >
+                      Delete
+                    </button>
+                    <button
+                      onClick={() => setDeleteConfirm(null)}
+                      className="text-xs px-2 py-1.5 rounded-lg text-muted hover:text-foreground"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => setDeleteConfirm(note.id)}
+                    className="text-muted hover:text-danger transition-colors shrink-0 p-2 -m-1"
+                    title="Delete note"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
+                        d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                  </button>
+                )}
               </div>
             </div>
           ))}
