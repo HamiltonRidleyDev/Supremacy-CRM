@@ -567,10 +567,15 @@ export default function Dashboard() {
   const [winbackData, setWinbackData] = useState<{ candidates: any[]; activeSuggestions: any[]; costTrends: Record<string, any> } | null>(null);
   const [winbackLoading, setWinbackLoading] = useState(false);
 
-  // Desktop default: redirect to Daily Briefing
+  // Desktop default: redirect to Daily Briefing on first app open only.
+  // Once the user has navigated anywhere, they can return to / freely.
   useEffect(() => {
     if (isReady && !isMobile) {
-      router.replace("/briefing");
+      const key = "supremacy_landed";
+      if (!sessionStorage.getItem(key)) {
+        sessionStorage.setItem(key, "1");
+        router.replace("/briefing");
+      }
     }
   }, [isReady, isMobile, router]);
 
