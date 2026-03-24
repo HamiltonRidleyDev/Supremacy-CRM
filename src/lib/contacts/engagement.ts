@@ -1,40 +1,46 @@
 import type Database from "better-sqlite3";
 import type { EngagementResult, RiskLevel, ScoreResult } from "./types";
-
-// ---- Weight Configuration ----
-const WEIGHTS = {
-  attendance: 0.4,
-  communication: 0.2,
-  progression: 0.2,
-  community: 0.1,
-  financial: 0.1,
-};
+import { getEngagementConfig, type EngagementConfig, type TierEntry, type MinTierEntry } from "./engagement-config";
 
 // Belt numeric values for progression tracking
 const BELT_ORDER: Record<string, number> = {
   white: 0, blue: 1, purple: 2, brown: 3, black: 4,
 };
 
-// Expected months per belt (approximate BJJ timeline)
-const BELT_EXPECTED_MONTHS: Record<string, number> = {
-  white: 0, blue: 18, purple: 42, brown: 72, black: 108,
-};
+// ---- Tier Lookup Helpers ----
+
+/** Find the score for a value in ascending tiers (e.g., days since last → max threshold) */
+function lookupAscending(value: number, tiers: TierEntry[], fallback: number = 0): number {
+  for (const tier of tiers) {
+    if (value <= tier.max) return tier.score;
+  }
+  return fallback;
+}
+
+/** Find the score for a value in descending tiers (e.g., classes/month → min threshold) */
+function lookupDescending(value: number, tiers: MinTierEntry[], fallback: number = 0): number {
+  for (const tier of tiers) {
+    if (value >= tier.min) return tier.score;
+  }
+  return fallback;
+}
 
 // ---- Individual Component Scorers ----
 
-function scoreAttendance(db: Database.Database, studentId: number): { score: number; details: string } {
-  // Check if we have granular attendance records
+function scoreAttendance(
+  db: Database.Database,
+  studentId: number,
+  cfg: EngagementConfig["attendance"]
+): { score: number; details: string } {
   const hasAttendanceRecords = (db.prepare(`
     SELECT COUNT(*) as count FROM attendance WHERE student_id = ?
   `).get(studentId) as any)?.count || 0;
 
   if (hasAttendanceRecords > 0) {
-    // Full scoring from attendance table
-    return scoreAttendanceFromRecords(db, studentId);
+    return scoreAttendanceFromRecords(db, studentId, cfg);
   }
 
   // Fallback: use students.last_attendance + total_classes from Zivvy sync
-  // This gives us recency and volume but not trend/consistency
   const student = db.prepare(`
     SELECT last_attendance, total_classes, start_date FROM students WHERE id = ?
   `).get(studentId) as any;
@@ -47,42 +53,32 @@ function scoreAttendance(db: Database.Database, studentId: number): { score: num
   const daysSinceLast = Math.floor((Date.now() - lastAttendDate.getTime()) / (24 * 60 * 60 * 1000));
   const totalClasses = student.total_classes || 0;
 
-  // Recency score (60% weight) — how recently did they train?
-  let recencyScore: number;
-  if (daysSinceLast <= 3) recencyScore = 100;
-  else if (daysSinceLast <= 7) recencyScore = 90;
-  else if (daysSinceLast <= 14) recencyScore = 70;
-  else if (daysSinceLast <= 30) recencyScore = 50;
-  else if (daysSinceLast <= 60) recencyScore = 25;
-  else if (daysSinceLast <= 90) recencyScore = 10;
-  else recencyScore = 0;
+  // Recency score
+  const recencyScore = lookupAscending(daysSinceLast, cfg.recency);
 
-  // Volume score (40% weight) — how many total classes for their tenure?
-  let volumeScore = 50; // default
+  // Volume score
+  let volumeScore = 50;
   if (student.start_date) {
     const monthsActive = Math.max(1, (Date.now() - new Date(student.start_date).getTime()) / (30 * 24 * 60 * 60 * 1000));
     const classesPerMonth = totalClasses / monthsActive;
-    // 8+ classes/month = excellent, 4-8 = good, 2-4 = fair, <2 = low
-    if (classesPerMonth >= 8) volumeScore = 100;
-    else if (classesPerMonth >= 4) volumeScore = 75;
-    else if (classesPerMonth >= 2) volumeScore = 50;
-    else if (classesPerMonth >= 1) volumeScore = 30;
-    else volumeScore = 10;
+    volumeScore = lookupDescending(classesPerMonth, cfg.volume, 10);
   }
 
-  const score = Math.round(recencyScore * 0.6 + volumeScore * 0.4);
+  const score = Math.round(recencyScore * cfg.recencyWeight + volumeScore * cfg.volumeWeight);
   const details = `Last trained ${daysSinceLast}d ago, ${totalClasses} total classes (Zivvy data)`;
   return { score, details };
 }
 
-function scoreAttendanceFromRecords(db: Database.Database, studentId: number): { score: number; details: string } {
-  // Classes in last 30 days
+function scoreAttendanceFromRecords(
+  db: Database.Database,
+  studentId: number,
+  cfg: EngagementConfig["attendance"]
+): { score: number; details: string } {
   const last30 = (db.prepare(`
     SELECT COUNT(*) as count FROM attendance
     WHERE student_id = ? AND checked_in_at >= datetime('now', '-30 days')
   `).get(studentId) as any)?.count || 0;
 
-  // Classes in last 14 days vs prior 14 days (trend)
   const recent14 = (db.prepare(`
     SELECT COUNT(*) as count FROM attendance
     WHERE student_id = ? AND checked_in_at >= datetime('now', '-14 days')
@@ -95,7 +91,6 @@ function scoreAttendanceFromRecords(db: Database.Database, studentId: number): {
       AND checked_in_at < datetime('now', '-14 days')
   `).get(studentId) as any)?.count || 0;
 
-  // Weekly attendance over last 8 weeks for consistency
   const weeklyRaw = db.prepare(`
     SELECT strftime('%Y-%W', checked_in_at) as week, COUNT(*) as count
     FROM attendance
@@ -103,18 +98,17 @@ function scoreAttendanceFromRecords(db: Database.Database, studentId: number): {
     GROUP BY week
   `).all(studentId) as Array<{ week: string; count: number }>;
 
-  // Get training frequency target (default 3x/week = 12/month)
   const profile = db.prepare(`
     SELECT training_frequency_target FROM student_profiles WHERE student_id = ?
   `).get(studentId) as any;
   const targetPerMonth = profile?.training_frequency_target
     ? parseInt(profile.training_frequency_target) * 4
-    : 12;
+    : cfg.defaultTargetPerMonth;
 
-  // Frequency score (50%)
+  // Frequency score
   const frequencyScore = Math.min(100, (last30 / Math.max(targetPerMonth, 1)) * 100);
 
-  // Trend score (30%)
+  // Trend score
   let trendScore: number;
   if (recent14 === 0 && prior14 === 0) {
     trendScore = 0;
@@ -122,32 +116,37 @@ function scoreAttendanceFromRecords(db: Database.Database, studentId: number): {
     trendScore = recent14 > 0 ? 80 : 0;
   } else {
     const trendRatio = recent14 / prior14;
-    if (trendRatio >= 1.2) trendScore = 90;
-    else if (trendRatio >= 0.8) trendScore = 60;
-    else if (trendRatio >= 0.5) trendScore = 30;
-    else trendScore = 10;
+    trendScore = lookupDescending(trendRatio, cfg.trendTiers, 10);
   }
 
-  // Consistency score (20%)
+  // Consistency score
   const actualWeekCounts = weeklyRaw.map((w) => w.count);
   let consistencyScore = 50;
   if (actualWeekCounts.length >= 3) {
     const mean = actualWeekCounts.reduce((a, b) => a + b, 0) / actualWeekCounts.length;
     const variance = actualWeekCounts.reduce((sum, c) => sum + Math.pow(c - mean, 2), 0) / actualWeekCounts.length;
     const stddev = Math.sqrt(variance);
-    consistencyScore = Math.max(0, Math.min(100, 100 - stddev * 25));
+    consistencyScore = Math.max(0, Math.min(100, 100 - stddev * cfg.consistencyMultiplier));
   } else if (actualWeekCounts.length === 0) {
     consistencyScore = 0;
   }
 
-  const score = Math.round(frequencyScore * 0.5 + trendScore * 0.3 + consistencyScore * 0.2);
+  const score = Math.round(
+    frequencyScore * cfg.frequencyWeight +
+    trendScore * cfg.trendWeight +
+    consistencyScore * cfg.consistencyWeight
+  );
   const details = `${last30} classes/30d (target: ${targetPerMonth}), trend: ${recent14}→${prior14}, ${actualWeekCounts.length} active weeks`;
   return { score, details };
 }
 
-function scoreCommunication(db: Database.Database, mmId: string | null): { score: number; details: string } {
+function scoreCommunication(
+  db: Database.Database,
+  mmId: string | null,
+  cfg: EngagementConfig["communication"]
+): { score: number; details: string } {
   if (!mmId) {
-    return { score: 50, details: "No Market Muscles link (neutral)" };
+    return { score: cfg.neutralDefault, details: "No Market Muscles link (neutral)" };
   }
 
   const conv = db.prepare(`
@@ -161,32 +160,23 @@ function scoreCommunication(db: Database.Database, mmId: string | null): { score
   `).get(mmId) as any;
 
   if (!conv || conv.thread_count === 0) {
-    return { score: 50, details: "No conversation threads (neutral)" };
+    return { score: cfg.neutralDefault, details: "No conversation threads (neutral)" };
   }
 
-  // Reply rate (60%)
-  let replyScore: number;
   const replyRate = (conv.replied_count || 0) / conv.thread_count;
   const avgResponseHrs = conv.avg_response_hrs || 999;
+
+  let replyScore: number;
   if (replyRate === 0) {
     replyScore = 0;
-  } else if (avgResponseHrs < 4) {
-    replyScore = 100;
-  } else if (avgResponseHrs < 24) {
-    replyScore = 80;
   } else {
-    replyScore = 50;
+    replyScore = lookupAscending(avgResponseHrs, cfg.replyTime, 50);
   }
 
-  // Initiated contact (40%)
-  let initiatedScore: number;
   const inboundCount = conv.total_inbound || 0;
-  if (inboundCount >= 6) initiatedScore = 100;
-  else if (inboundCount >= 3) initiatedScore = 80;
-  else if (inboundCount >= 1) initiatedScore = 50;
-  else initiatedScore = 0;
+  const initiatedScore = lookupDescending(inboundCount, cfg.inboundCount, 0);
 
-  const score = Math.round(replyScore * 0.6 + initiatedScore * 0.4);
+  const score = Math.round(replyScore * cfg.replyWeight + initiatedScore * cfg.initiatedWeight);
   const details = `${conv.thread_count} threads, ${conv.total_inbound || 0} inbound, reply rate: ${Math.round(replyRate * 100)}%, avg response: ${Math.round(avgResponseHrs)}h`;
   return { score, details };
 }
@@ -195,10 +185,10 @@ function scoreProgression(
   db: Database.Database,
   studentId: number,
   beltRank: string | null,
-  startDate: string | null
+  startDate: string | null,
+  cfg: EngagementConfig["progression"]
 ): { score: number; details: string } {
-  // Advancement rate (50%)
-  let advancementScore = 50; // default if we can't compute
+  let advancementScore = 50;
   const beltNumeric = BELT_ORDER[beltRank || "white"] ?? 0;
 
   if (startDate) {
@@ -206,17 +196,15 @@ function scoreProgression(
       1,
       (Date.now() - new Date(startDate).getTime()) / (30 * 24 * 60 * 60 * 1000)
     );
-    // Find expected belt for time invested
     let expectedBelt = 0;
-    for (const [belt, months] of Object.entries(BELT_EXPECTED_MONTHS)) {
-      if (monthsActive >= months) expectedBelt = BELT_ORDER[belt];
+    for (const [belt, months] of Object.entries(cfg.beltExpectedMonths)) {
+      if (monthsActive >= months) expectedBelt = BELT_ORDER[belt] ?? 0;
     }
     if (beltNumeric >= expectedBelt) advancementScore = 100;
     else if (beltNumeric >= expectedBelt - 1) advancementScore = 50;
     else advancementScore = 20;
   }
 
-  // Technique breadth (50%)
   const categories = (db.prepare(`
     SELECT COUNT(DISTINCT t.category) as count
     FROM attendance a
@@ -226,15 +214,18 @@ function scoreProgression(
     WHERE a.student_id = ?
   `).get(studentId) as any)?.count || 0;
 
-  const breadthScore = Math.round((categories / 9) * 100); // 9 technique categories
+  const breadthScore = Math.round((categories / cfg.totalCategories) * 100);
 
-  const score = Math.round(advancementScore * 0.5 + breadthScore * 0.5);
-  const details = `Belt: ${beltRank || "white"} (${beltNumeric}/4), ${categories}/9 technique categories covered`;
+  const score = Math.round(advancementScore * cfg.advancementWeight + breadthScore * cfg.breadthWeight);
+  const details = `Belt: ${beltRank || "white"} (${beltNumeric}/4), ${categories}/${cfg.totalCategories} technique categories covered`;
   return { score, details };
 }
 
-function scoreCommunity(db: Database.Database, studentId: number): { score: number; details: string } {
-  // Check if community tables have any data
+function scoreCommunity(
+  db: Database.Database,
+  studentId: number,
+  cfg: EngagementConfig["community"]
+): { score: number; details: string } {
   const channelCount = (db.prepare(`
     SELECT COUNT(*) as count FROM channel_members WHERE student_id = ?
   `).get(studentId) as any)?.count || 0;
@@ -244,27 +235,15 @@ function scoreCommunity(db: Database.Database, studentId: number): { score: numb
     WHERE author_id = ? AND created_at >= datetime('now', '-30 days')
   `).get(studentId) as any)?.count || 0;
 
-  // Channel membership (40%)
-  let membershipScore: number;
-  if (channelCount >= 3) membershipScore = 100;
-  else if (channelCount >= 2) membershipScore = 80;
-  else if (channelCount >= 1) membershipScore = 50;
-  else membershipScore = 0;
+  const membershipScore = lookupDescending(channelCount, cfg.channelTiers, 0);
+  const activityScore = lookupDescending(recentMessages, cfg.messageTiers, 0);
 
-  // Message activity (60%)
-  let activityScore: number;
-  if (recentMessages >= 6) activityScore = 100;
-  else if (recentMessages >= 3) activityScore = 70;
-  else if (recentMessages >= 1) activityScore = 40;
-  else activityScore = 0;
-
-  // If no community data exists at all (no channels created yet), score neutral
   const totalChannels = (db.prepare("SELECT COUNT(*) as count FROM channels").get() as any)?.count || 0;
   if (totalChannels === 0) {
-    return { score: 50, details: "Community not yet active (neutral)" };
+    return { score: cfg.neutralDefault, details: "Community not yet active (neutral)" };
   }
 
-  const score = Math.round(membershipScore * 0.4 + activityScore * 0.6);
+  const score = Math.round(membershipScore * cfg.membershipWeight + activityScore * cfg.activityWeight);
   const details = `${channelCount} channels, ${recentMessages} messages/30d`;
   return { score, details };
 }
@@ -273,29 +252,27 @@ function scoreFinancial(
   db: Database.Database,
   monthlyRate: number | null,
   billingMethod: string | null,
-  onVacation: boolean
+  onVacation: boolean,
+  cfg: EngagementConfig["financial"]
 ): { score: number; details: string } {
-  // Get average rate for normalization
   const avgRate = (db.prepare(`
     SELECT AVG(monthly_rate) as avg FROM students
     WHERE membership_status = 'active' AND monthly_rate > 0
   `).get() as any)?.avg || 100;
 
-  // Payment status (70%)
   let paymentScore: number;
   if (onVacation) {
-    paymentScore = 50;
+    paymentScore = cfg.vacationScore;
   } else if (monthlyRate && monthlyRate > 0) {
-    paymentScore = 100;
+    paymentScore = cfg.activeScore;
   } else {
-    paymentScore = 20; // no rate on file (step-up, comp, etc.)
+    paymentScore = cfg.noRateScore;
   }
 
-  // Rate tier (30%)
   const rate = monthlyRate || 0;
-  const rateScore = avgRate > 0 ? Math.min(100, Math.round((rate / avgRate) * 80)) : 50;
+  const rateScore = avgRate > 0 ? Math.min(100, Math.round((rate / avgRate) * cfg.rateMultiplier)) : 50;
 
-  const score = Math.round(paymentScore * 0.7 + rateScore * 0.3);
+  const score = Math.round(paymentScore * cfg.paymentWeight + rateScore * cfg.rateWeight);
   const details = `$${rate}/mo (avg: $${Math.round(avgRate)}), ${onVacation ? "on vacation" : billingMethod || "active"}`;
   return { score, details };
 }
@@ -305,7 +282,8 @@ function scoreFinancial(
 function generateRiskFactors(
   db: Database.Database,
   studentId: number | null,
-  components: { attendance: number; communication: number; progression: number }
+  components: { attendance: number; communication: number; progression: number },
+  cfg: EngagementConfig["riskFactors"]
 ): string[] {
   const factors: string[] = [];
 
@@ -320,18 +298,18 @@ function generateRiskFactors(
       const daysAbsent = Math.floor(
         (Date.now() - new Date(student.last_attendance).getTime()) / (24 * 60 * 60 * 1000)
       );
-      if (daysAbsent > 90) factors.push(`No attendance in ${daysAbsent} days (ghost)`);
-      else if (daysAbsent > 30) factors.push(`No attendance in ${daysAbsent} days`);
-      else if (daysAbsent > 14) factors.push(`${daysAbsent} days since last class`);
+      if (daysAbsent > cfg.ghostDays) factors.push(`No attendance in ${daysAbsent} days (ghost)`);
+      else if (daysAbsent > cfg.warningDays) factors.push(`No attendance in ${daysAbsent} days`);
+      else if (daysAbsent > cfg.noticeDays) factors.push(`${daysAbsent} days since last class`);
     } else if (student?.membership_status === "active") {
       factors.push("No attendance date on file");
     }
   }
 
-  if (components.attendance < 30) factors.push("Very low attendance frequency");
-  if (components.attendance >= 30 && components.attendance < 50) factors.push("Declining attendance trend");
+  if (components.attendance < cfg.lowAttendanceThreshold) factors.push("Very low attendance frequency");
+  if (components.attendance >= cfg.lowAttendanceThreshold && components.attendance < cfg.decliningAttendanceThreshold) factors.push("Declining attendance trend");
   if (components.communication === 0) factors.push("Never replied to messages");
-  if (components.progression < 30) factors.push("Limited technique exposure");
+  if (components.progression < cfg.lowProgressionThreshold) factors.push("Limited technique exposure");
 
   return factors;
 }
@@ -340,8 +318,15 @@ function generateRiskFactors(
 
 /**
  * Compute engagement score for a single contact.
+ * Loads thresholds from the DB-stored config (falls back to defaults).
  */
-export function computeEngagement(db: Database.Database, contactId: number): EngagementResult {
+export function computeEngagement(
+  db: Database.Database,
+  contactId: number,
+  configOverride?: EngagementConfig
+): EngagementResult {
+  const config = configOverride || getEngagementConfig(db);
+
   const contact = db.prepare("SELECT * FROM contacts WHERE id = ?").get(contactId) as any;
   if (!contact) {
     return {
@@ -360,48 +345,46 @@ export function computeEngagement(db: Database.Database, contactId: number): Eng
 
   const isActiveMember = contact.contact_type === "active_member";
 
-  // Get student data if available
   let student: any = null;
   if (contact.student_id) {
     student = db.prepare("SELECT * FROM students WHERE id = ?").get(contact.student_id);
   }
 
-  // Compute each component
   const attendance = isActiveMember && contact.student_id
-    ? scoreAttendance(db, contact.student_id)
+    ? scoreAttendance(db, contact.student_id, config.attendance)
     : { score: 0, details: isActiveMember ? "No student link" : "Not an active member" };
 
-  const communication = scoreCommunication(db, contact.mm_id);
+  const communication = scoreCommunication(db, contact.mm_id, config.communication);
 
   const progression = isActiveMember && contact.student_id
-    ? scoreProgression(db, contact.student_id, student?.belt_rank, student?.start_date)
+    ? scoreProgression(db, contact.student_id, student?.belt_rank, student?.start_date, config.progression)
     : { score: 0, details: "Not an active member" };
 
   const community = isActiveMember && contact.student_id
-    ? scoreCommunity(db, contact.student_id)
+    ? scoreCommunity(db, contact.student_id, config.community)
     : { score: 0, details: "Not an active member" };
 
   const financial = isActiveMember
-    ? scoreFinancial(db, student?.monthly_rate, student?.billing_method, !!student?.on_vacation)
+    ? scoreFinancial(db, student?.monthly_rate, student?.billing_method, !!student?.on_vacation, config.financial)
     : { score: 0, details: "Not an active member" };
 
   // Composite score
   const score = Math.round(
-    attendance.score * WEIGHTS.attendance +
-    communication.score * WEIGHTS.communication +
-    progression.score * WEIGHTS.progression +
-    community.score * WEIGHTS.community +
-    financial.score * WEIGHTS.financial
+    attendance.score * config.weights.attendance +
+    communication.score * config.weights.communication +
+    progression.score * config.weights.progression +
+    community.score * config.weights.community +
+    financial.score * config.weights.financial
   );
 
   // Risk level
   let risk_level: RiskLevel;
   if (!isActiveMember) {
     risk_level = contact.contact_type === "former_member" ? "churned" : "healthy";
-  } else if (score >= 80) risk_level = "healthy";
-  else if (score >= 60) risk_level = "cooling";
-  else if (score >= 40) risk_level = "at_risk";
-  else if (score >= 20) risk_level = "ghost";
+  } else if (score >= config.riskLevels.healthy) risk_level = "healthy";
+  else if (score >= config.riskLevels.cooling) risk_level = "cooling";
+  else if (score >= config.riskLevels.atRisk) risk_level = "at_risk";
+  else if (score >= config.riskLevels.ghost) risk_level = "ghost";
   else risk_level = "churned";
 
   const risk_factors = isActiveMember
@@ -409,7 +392,7 @@ export function computeEngagement(db: Database.Database, contactId: number): Eng
         attendance: attendance.score,
         communication: communication.score,
         progression: progression.score,
-      })
+      }, config.riskFactors)
     : [];
 
   return {
@@ -422,10 +405,11 @@ export function computeEngagement(db: Database.Database, contactId: number): Eng
 
 /**
  * Batch compute engagement scores for all contacts.
- * Only scores active_member and former_member contacts (prospects/leads get default scores).
+ * Loads config once and reuses for all contacts.
  */
 export function batchComputeEngagement(db: Database.Database): ScoreResult {
   const start = Date.now();
+  const config = getEngagementConfig(db);
 
   const contacts = db.prepare(`
     SELECT id, contact_type FROM contacts
@@ -454,7 +438,7 @@ export function batchComputeEngagement(db: Database.Database): ScoreResult {
 
   const batch = db.transaction(() => {
     for (const contact of contacts) {
-      const result = computeEngagement(db, contact.id);
+      const result = computeEngagement(db, contact.id, config);
       updateStmt.run(
         result.score,
         result.components.attendance.score,
