@@ -1,7 +1,7 @@
 import { getDb } from "../db";
 import { fetchAllContacts, fetchAllConversations, fetchThreadMessages } from "./client";
 import { mapToLead, normalizeEmail, normalizePhone, tagsToMotivations } from "./mapper";
-import type { MMSyncResult, CRMMessage } from "./types";
+import type { MMSyncResult, CRMMessage, CRMConversationThread } from "./types";
 
 /**
  * Run a full sync from Market Muscles → local SQLite.
@@ -180,11 +180,28 @@ export async function runMMSync(): Promise<MMSyncResult> {
     contactTransaction();
 
     // ─── Phase 2: Conversations ───────────────────────────────────
+    // NOTE: The CRM API (crm.marketmuscles.com) was disabled by Market Muscles
+    // in March 2026. Conversation sync is attempted but gracefully skipped if
+    // the API returns 403 "api_disabled". Existing conversation data in SQLite
+    // is preserved as historical data.
 
     let conversationsSynced = 0;
     let messagesSynced = 0;
+    let conversationSyncSkipped = false;
 
-    const threads = await fetchAllConversations();
+    let threads: CRMConversationThread[];
+    try {
+      threads = await fetchAllConversations();
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      if (errMsg.includes("403") || errMsg.includes("api_disabled") || errMsg.includes("API access disabled")) {
+        console.warn("CRM API disabled — skipping conversation sync. Contact data synced successfully.");
+        conversationSyncSkipped = true;
+        threads = [];
+      } else {
+        throw err; // re-throw non-api-disabled errors
+      }
+    }
 
     const upsertConversation = db.prepare(`
       INSERT INTO mm_conversations (thread_id, contact_id, contact_name, message_count,
@@ -312,6 +329,9 @@ export async function runMMSync(): Promise<MMSyncResult> {
       conversations_synced: conversationsSynced,
       messages_synced: messagesSynced,
       duration_ms: Date.now() - start,
+      ...(conversationSyncSkipped && {
+        warning: "CRM API disabled by Market Muscles — conversation sync skipped. Existing conversation data preserved as historical.",
+      }),
     };
 
     db.prepare(`

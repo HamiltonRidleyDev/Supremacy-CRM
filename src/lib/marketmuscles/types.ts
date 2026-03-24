@@ -178,6 +178,7 @@ export interface MMSyncResult {
   messages_synced: number;
   duration_ms: number;
   error?: string;
+  warning?: string;
 }
 
 /** Sync log entry */
